@@ -22,7 +22,7 @@ import com.walter.CoordinateConverter.Polar;
 
 public class ContextMenuItem {
     private static final String TAG = "ContextMenuItem";
-    private static final int ANIMATION_DURATION = 5000; // shorter animation duration for better UX
+    private static final int ANIMATION_DURATION = 300; // shorter animation duration for better UX
     
     private int centerX;
     private int centerY;
@@ -118,8 +118,8 @@ public class ContextMenuItem {
         int radius = Math.max(150, bubbleSize);
         
         CoordinateConverter.Polar computedRotation = new CoordinateConverter.Polar(
-            radius, // Use fixed radius instead of scaling by normalXN1To1
-            ((this.nth-1) * (Math.PI/3)) + normalX * Math.PI
+            Math.abs(normalXN1To1) * 200, 
+            ((this.nth-1) * normalXN1To1 * (Math.PI/3)) + normalX * Math.PI
         );
         
         Cartesian c = cc.polarToCartesian(computedRotation);

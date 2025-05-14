@@ -28,6 +28,7 @@ import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import android.content.res.Resources;
+import com.walter.BubbleClosingZone;
 
 /**
  * FloatingBubbleModule
@@ -155,11 +156,23 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
         private static final int DEFAULT_BUBBLE_SIZE_DP = 48; // Fixed: Changed from 12 to a more reasonable size (48dp)
         private static final int INITIAL_Y_OFFSET = 150;
         private static final int DEFAULT_UNDERLAY_COLOR = Color.argb(20, 0, 0, 0);
-
+        private BubbleClosingManager closingManager;
         @Override
         public void onCreate() {
             super.onCreate();
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+             closingManager = new BubbleClosingManager(this, new BubbleClosingZone.BubbleCloseListener() {
+            @Override
+            public void onBubbleClose() {
+                // Stop the bubble service when closing is requested
+                stopSelf();
+                
+                // Optionally notify React Native about the close event
+                sendEventToReactNative("bubble_closed", null);
+                
+                Log.d(TAG, "Bubble closed via closing zone");
+            }
+        });
         }
 
         /**
@@ -393,48 +406,89 @@ private void showUnderlay() {
          * @return View.OnTouchListener for the bubble
          */
         private View.OnTouchListener createBubbleTouchListener(final int bubbleSize) {
-            return new View.OnTouchListener() {
-                private boolean isClick = true;
-                private int initialX;
-                private int initialY;
-                private float initialTouchX;
-                private float initialTouchY;
-                
-                @Override
-                public boolean onTouch(View v, MotionEvent event) {
-                    try {
-                        switch (event.getAction()) {
-                            case MotionEvent.ACTION_DOWN:
-                                // Record initial positions for drag calculation
-                                isClick = true;
-                                initialX = params.x;
-                                initialY = params.y;
-                                initialTouchX = event.getRawX();
-                                initialTouchY = event.getRawY();
-                                return true;
-                                
-                            case MotionEvent.ACTION_MOVE:
-                                handleBubbleDrag(event);
-                                return true;
-                                
-                            case MotionEvent.ACTION_UP:
-                                handleBubbleRelease(event, bubbleSize);
-                                return true;
-                                
-                            default:
-                                return false;
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error in bubble touch listener: " + e.getMessage(), e);
-                        return false;
-                    }
-                }
-                
-                /**
+        return new View.OnTouchListener() {
+            private boolean isClick = true;
+            private int initialX;
+            private int initialY;
+            private float initialTouchX;
+            private float initialTouchY;
+            
+            @Override
+
+ 
+            /**
                  * Handles the bubble dragging motion and constrains position to screen bounds
                  * 
                  * @param event The motion event
                  */
+public boolean onTouch(View v, MotionEvent event) {
+    try {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                // Record initial positions for drag calculation
+                isClick = true;
+                initialX = params.x;
+                initialY = params.y;
+                initialTouchX = event.getRawX();
+                initialTouchY = event.getRawY();
+                return true;
+                
+            case MotionEvent.ACTION_MOVE:
+                // Calculate distance moved
+                float movedX = event.getRawX() - initialTouchX;
+                float movedY = event.getRawY() - initialTouchY;
+                
+                // If moved significantly, not a click and we're dragging
+                if (Math.abs(movedX) > DRAG_THRESHOLD || Math.abs(movedY) > DRAG_THRESHOLD) {
+                    isClick = false;
+                    
+                    // Notify closing manager if drag just started
+                    if (!closingManager.isDragging()) {
+                        closingManager.onDragStart();
+                    }
+                }
+                
+                handleBubbleDrag(event);
+                
+                // Update closing manager during drag
+                if (!isClick) {
+                    closingManager.onDragMove(params.x, params.y, params.width);
+                }
+                
+                return true;
+                
+            case MotionEvent.ACTION_UP:
+                if (!isClick) {
+                    // Log for debugging
+                    Log.d(TAG, "Bubble released at x:" + params.x + ", y:" + params.y);
+                    
+                    // Check if bubble was released in closing zone
+                    boolean releasedInClosingZone = closingManager.onDragEnd(
+                            params.x, params.y, params.width);
+                    
+                    // Only proceed with normal release handling if not in closing zone
+                    if (!releasedInClosingZone) {
+                        handleBubbleRelease(event, bubbleSize);
+                    } else {
+                        Log.d(TAG, "Bubble released in closing zone");
+                    }
+                } else {
+                    // It was a click, not a drag
+                    handleBubbleClick();
+                }
+                return true;
+                
+            default:
+                return false;
+        }
+    } catch (Exception e) {
+        Log.e(TAG, "Error in bubble touch listener: " + e.getMessage(), e);
+        // If an exception occurs, make sure to clean up properly
+        closingManager.hide();
+        return false;
+    }
+}
+
                 private void handleBubbleDrag(MotionEvent event) {
                     // Calculate distance moved
                     float movedX = event.getRawX() - initialTouchX;
@@ -673,19 +727,24 @@ private void showUnderlay() {
         /**
          * Cleans up resources when the service is destroyed
          */
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-            
-            if (ctxBubbleJoint != null) {
-                //ctxBubbleJoint.unsubscribe();
-            }
-            
-            removeBubbleView();
-            cleanupUnderlay();
-            
-            logInfo("Floating bubble service destroyed");
+ @Override
+    public void onDestroy() {
+        super.onDestroy();
+        
+        if (ctxBubbleJoint != null) {
+            //ctxBubbleJoint.unsubscribe();
         }
+        
+        // Clean up closing manager
+        if (closingManager != null) {
+            closingManager.cleanup();
+        }
+        
+        removeBubbleView();
+        cleanupUnderlay();
+        
+        logInfo("Floating bubble service destroyed");
+    }
 
         /**
          * Removes the bubble view from the window manager

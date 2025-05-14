@@ -140,10 +140,23 @@ public class BubbleClosingZone {
     /**
      * Hides the closing zone with animation
      */
-    public void hide() {
-        if (isVisible) {
-            try {
-                // Animate the view disappearance
+public void hide(boolean forceImmediate) {
+    if (isVisible) {
+        try {
+            if (forceImmediate) {
+                // Skip animation and remove immediately
+                if (closingZoneView != null && closingZoneView.isAttachedToWindow()) {
+                    try {
+                        windowManager.removeView(closingZoneView);
+                    } catch (IllegalArgumentException e) {
+                        Log.e(TAG, "View already removed: " + e.getMessage());
+                    }
+                }
+                isVisible = false;
+                isBubbleInZone = false;
+                Log.d(TAG, "Closing zone force hidden");
+            } else {
+                // Use animation as before
                 Animation fadeOut = new AlphaAnimation(1.0f, 0.0f);
                 fadeOut.setDuration(ANIMATION_DURATION);
                 fadeOut.setAnimationListener(new Animation.AnimationListener() {
@@ -156,10 +169,12 @@ public class BubbleClosingZone {
                             if (closingZoneView != null && closingZoneView.isAttachedToWindow()) {
                                 windowManager.removeView(closingZoneView);
                             }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Error removing view after animation: " + e.getMessage());
+                        } finally {
+                            // Always update flags even if exception occurs
                             isVisible = false;
                             isBubbleInZone = false;
-                        } catch (Exception e) {
-                            Log.e(TAG, "Error removing view after animation: " + e.getMessage(), e);
                         }
                     }
                     
@@ -168,13 +183,25 @@ public class BubbleClosingZone {
                 });
                 
                 closingZoneView.startAnimation(fadeOut);
-                Log.d(TAG, "Closing zone hidden");
-            } catch (Exception e) {
-                Log.e(TAG, "Error hiding closing zone: " + e.getMessage(), e);
+                Log.d(TAG, "Closing zone hiding with animation");
             }
+        } catch (Exception e) {
+            Log.e(TAG, "Error hiding closing zone: " + e.getMessage(), e);
+            
+            // As a fallback, try to force remove the view and update state
+            try {
+                if (closingZoneView != null && closingZoneView.isAttachedToWindow()) {
+                    windowManager.removeView(closingZoneView);
+                }
+            } catch (Exception ex) {
+                Log.e(TAG, "Final attempt to remove view failed: " + ex.getMessage());
+            }
+            
+            isVisible = false;
+            isBubbleInZone = false;
         }
     }
-    
+}
     /**
      * Updates the closing zone based on the bubble's position
      * 
@@ -250,17 +277,27 @@ public class BubbleClosingZone {
      * Called when bubble is released inside the closing zone
      */
     public void onBubbleReleased() {
-        if (isBubbleInZone && closeListener != null) {
-            // Display a success animation
-            showSuccessAnimation();
+    if (isBubbleInZone && closeListener != null) {
+        // Display a success animation
+        showSuccessAnimation();
+        
+        // Notify listener after a short delay to allow animation to play
+        new Handler().postDelayed(() -> {
+            // First notify the listener
+            closeListener.onBubbleClose();
             
-            // Notify listener after a short delay to allow animation to play
-            new Handler().postDelayed(() -> {
-                closeListener.onBubbleClose();
-                hide();
-            }, ANIMATION_DURATION);
-        }
+            // Then ensure the zone is hidden
+            // Use force hide to make sure it's removed
+            hide(true);
+            
+            // Add a log to debug
+            Log.d(TAG, "Bubble released in zone - closing zone hidden");
+        }, ANIMATION_DURATION);
+    } else {
+        // If for some reason we're not in the zone, hide anyway
+        hide(false);
     }
+}
     
     /**
      * Shows an animation when the bubble is successfully closed

@@ -1,90 +1,105 @@
 package com.walter;
 
+import android.content.Context;
+import android.util.Log;
+
 /**
  * BubbleClosingManager
- * 
- * A helper class to integrate the BubbleClosingZone with the FloatingBubbleService.
- * This class manages the closing zone visibility and interactions based on bubble drag events.
+ *
+ * Manages the interaction between a draggable floating bubble and a closing zone.
+ * It handles visibility and behavior of the closing zone during drag events.
  */
 public class BubbleClosingManager {
-    private BubbleClosingZone closingZone;
+    private static final String TAG = "BubbleClosingManager";
+    private final BubbleClosingZone closingZone;
     private boolean isDragging = false;
-    
+
     /**
-     * Constructor
-     * 
-     * @param context The service or application context
-     * @param closeListener Listener for close events
+     * Constructs a BubbleClosingManager instance.
+     *
+     * @param context       the application or service context
+     * @param closeListener listener triggered when the bubble is released in the closing zone
      */
-    public BubbleClosingManager(android.content.Context context, BubbleClosingZone.BubbleCloseListener closeListener) {
-        // Initialize the closing zone
-        closingZone = new BubbleClosingZone(context);
-        closingZone.setCloseListener(closeListener);
+    public BubbleClosingManager(Context context, BubbleClosingZone.BubbleCloseListener closeListener) {
+        this.closingZone = new BubbleClosingZone(context);
+        this.closingZone.setCloseListener(closeListener);
     }
-    
+
     /**
-     * Called when bubble drag starts
+     * Should be called when the bubble starts being dragged.
+     * Displays the closing zone.
      */
     public void onDragStart() {
         isDragging = true;
         closingZone.show();
+        Log.d(TAG, "Drag started - showing closing zone");
     }
-    
+
     /**
-     * Called during bubble drag to update position
-     * 
-     * @param bubbleX X coordinate of bubble
-     * @param bubbleY Y coordinate of bubble
-     * @param bubbleSize Size of the bubble
-     * @return true if bubble is in closing zone, false otherwise
+     * Should be called during the bubble drag to update its position.
+     *
+     * @param bubbleX    the X coordinate of the bubble
+     * @param bubbleY    the Y coordinate of the bubble
+     * @param bubbleSize the size (diameter) of the bubble
+     * @return true if the bubble is over the closing zone, false otherwise
      */
     public boolean onDragMove(int bubbleX, int bubbleY, int bubbleSize) {
-        if (isDragging) {
-            return closingZone.updateBubblePosition(bubbleX, bubbleY, bubbleSize);
-        }
-        return false;
+        return isDragging && closingZone.updateBubblePosition(bubbleX, bubbleY, bubbleSize);
     }
-    
+
     /**
-     * Called when bubble drag ends
-     * 
-     * @param bubbleX Final X coordinate of bubble
-     * @param bubbleY Final Y coordinate of bubble
-     * @param bubbleSize Size of the bubble
-     * @return true if bubble was released in closing zone, false otherwise
+     * Should be called when the drag ends to determine whether the bubble should be closed.
+     *
+     * @param bubbleX    the final X coordinate
+     * @param bubbleY    the final Y coordinate
+     * @param bubbleSize the size of the bubble
+     * @return true if the bubble was dropped inside the closing zone
      */
     public boolean onDragEnd(int bubbleX, int bubbleY, int bubbleSize) {
-        boolean wasInClosingZone = false;
-        
+        boolean isInClosingZone = false;
+
         if (isDragging) {
-            wasInClosingZone = closingZone.updateBubblePosition(bubbleX, bubbleY, bubbleSize);
-            
-            if (wasInClosingZone) {
+            isInClosingZone = closingZone.updateBubblePosition(bubbleX, bubbleY, bubbleSize);
+            Log.d(TAG, "Drag ended - bubble in closing zone: " + isInClosingZone);
+
+            if (isInClosingZone) {
+                // Let onBubbleReleased handle the hide after animation
                 closingZone.onBubbleReleased();
             } else {
-                closingZone.hide();
+                // If not in closing zone, hide the zone
+                closingZone.hide(true);
+                Log.d(TAG, "Bubble not in zone - hiding closing zone");
             }
-            
+
             isDragging = false;
         }
         
-        return wasInClosingZone;
+        return isInClosingZone;
     }
-    
+
     /**
-     * Checks if drag is in progress
-     * 
+     * Hides the closing zone manually.
+     */
+    public void hide() {
+        Log.d(TAG, "Manually hiding closing zone");
+        closingZone.hide(true);
+    }
+
+    /**
+     * Indicates whether a drag is currently in progress.
+     *
      * @return true if dragging, false otherwise
      */
     public boolean isDragging() {
         return isDragging;
     }
-    
+
     /**
-     * Cleans up resources
+     * Frees any resources held by the closing zone.
      */
     public void cleanup() {
         if (closingZone != null) {
+            Log.d(TAG, "Cleaning up closing zone resources");
             closingZone.cleanup();
         }
     }
