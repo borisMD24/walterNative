@@ -101,6 +101,11 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 if (config.hasKey("bubbleSize")) {
                     intent.putExtra("bubbleSize", config.getInt("bubbleSize"));
                 }
+                
+                // New configuration options for underlay
+                if (config.hasKey("underlayColor")) {
+                    intent.putExtra("underlayColor", config.getInt("underlayColor"));
+                }
             }
             
             reactContext.startService(intent);
@@ -140,7 +145,7 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
         private WindowManager windowManager;
         private View bubbleView;
         private WindowManager.LayoutParams params;
-        private View underlayView;
+        private UnderlayView underlayView;
         private Intent cachedIntent = null;
         private ContextMenu contextMenu = null;
         private static final int ANIMATION_DURATION = 300;
@@ -149,6 +154,7 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
         private static final int EXPANDED_BUBBLE_SIZE = 64;
         private static final int DEFAULT_BUBBLE_SIZE_DP = 48; // Fixed: Changed from 12 to a more reasonable size (48dp)
         private static final int INITIAL_Y_OFFSET = 150;
+        private static final int DEFAULT_UNDERLAY_COLOR = Color.argb(20, 0, 0, 0);
 
         @Override
         public void onCreate() {
@@ -167,11 +173,12 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                     initializeBubble(intent);
                 }
                 
+                // Initialize context menu if needed
                 if (contextMenu == null) {
-                    contextMenu = new ContextMenu(underlayView); //here
+                    // Initialize with null since we'll use our UnderlayView class now
+                    contextMenu = new ContextMenu(null);
                     ctxBubbleJoint.subscribe(contextMenu);
                 }
-                
                 // Cache intent for later recreation
                 cachedIntent = intent;
             } catch (Exception e) {
@@ -208,10 +215,14 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 // Convert newSize from dp to pixels
                 float newSizePxFloat = convertDpToPixel(newSizeDp, bubbleView.getContext());
                 int newSizePx = (int) newSizePxFloat;
-                
+                this.underlayView.setBubbleSize(newSizeDp);
                 // Log the size conversion for debugging
                 logInfo("Scaling bubble from " + currentSizePx + "px to " + newSizePx + 
                        "px (" + newSizeDp + "dp)");
+                
+                // Store current center position before resizing
+                int centerX = params.x + (currentSizePx / 2);
+                int centerY = params.y + (currentSizePx / 2);
                 
                 // Create animator between pixel values
                 ValueAnimator scaleAnimator = ValueAnimator.ofInt(currentSizePx, newSizePx);
@@ -223,6 +234,10 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                     // Update layout params with pixel values
                     params.width = currentValuePx;
                     params.height = currentValuePx;
+                    
+                    // Adjust position to maintain the same center point
+                    params.x = centerX - (currentValuePx / 2);
+                    params.y = centerY - (currentValuePx / 2);
                     
                     updateBubblePosition();
                 });
@@ -237,53 +252,70 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
          * Toggles the visibility of underlay view for bubble context menu
          */
         private void toggleBubbleClosingUnderlay() {
-            // Remove existing underlay if present
-            if (underlayView != null) {
-                windowManager.removeView(underlayView);
-                underlayView = null;
-                ctxBubbleJoint.underlayDisplayed = false;
-                // Scale back to normal size after removing the underlay
-                scaleBubble(DEFAULT_BUBBLE_SIZE_DP);
-                logInfo("Underlay closed, scaled bubble to " + DEFAULT_BUBBLE_SIZE_DP + "dp");
-                return;
+            // Use our new UnderlayView class
+            if (underlayView == null) {
+                // Create underlay if it doesn't exist
+                underlayView = new UnderlayView(this);
+                
+                // Set up touch listener for the underlay
+                underlayView.setOnUnderlayTouchListener(() -> {
+                    // When user touches underlay, deactivate menu and hide underlay
+                    if (contextMenu != null) {
+                        contextMenu.setActive(false);
+                    }
+                    
+                    hideUnderlay();
+                });
             }
             
-            // Mark underlay as displayed
-            ctxBubbleJoint.underlayDisplayed = true;
-            
-            // Create a full-screen semi-transparent view
-            underlayView = new View(this);
-            underlayView.setBackgroundColor(Color.argb(50, 255, 0, 0)); // Semi-transparent red
-            
-            // Configure layout parameters for the underlay
-            WindowManager.LayoutParams underlayParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | 
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            );
-            underlayParams.gravity = Gravity.TOP | Gravity.START;
-
-            // Add touch listener to detect taps outside the bubble
-            underlayView.setOnTouchListener((v, event) -> {
-                // When user touches outside the bubble, deactivate menu
-                if (contextMenu != null) {
-                    contextMenu.setActive(false);
-                }
-
-                // Remove the underlay
-                toggleBubbleClosingUnderlay();
-                return true; // Consume the event
-            });
-
-            // Add the underlay view
-            windowManager.addView(underlayView, underlayParams);
-            
-            // Recreate bubble on top of underlay
-            removeBubbleView();
-            initializeBubble(cachedIntent);
+            if (underlayView.isVisible) {
+                // Hide the underlay
+                hideUnderlay();
+            } else {
+                // Show the underlay
+                showUnderlay();
+                
+            }
+        }
+        
+private void showUnderlay() {
+    // Get underlay color from intent if available
+    int underlayColor = (cachedIntent != null && cachedIntent.hasExtra("underlayColor")) 
+            ? cachedIntent.getIntExtra("underlayColor", DEFAULT_UNDERLAY_COLOR)
+            : DEFAULT_UNDERLAY_COLOR;
+    
+    // Calculate bubble center position
+    int bubbleCenterX = params.x + (params.width / 2);
+    int bubbleCenterY = params.y + (params.height / 2);
+    
+    // Show the underlay with specified color
+    underlayView.show(underlayColor);
+    
+    // Set coordinates for the underlay and trigger menu animation
+    underlayView.setCoords(bubbleCenterX, bubbleCenterY);
+    ctxBubbleJoint.underlayDisplayed = true;
+    
+    // Scale bubble to expanded size
+    scaleBubble(EXPANDED_BUBBLE_SIZE);
+    
+    // Make sure bubble is on top of underlay
+    removeBubbleView();
+    initializeBubble(cachedIntent);
+    
+    logInfo("Underlay displayed, scaled bubble to " + EXPANDED_BUBBLE_SIZE + "dp");
+}
+        /**
+         * Hides the underlay
+         */
+        private void hideUnderlay() {
+            if (underlayView != null) {
+                underlayView.hide();
+                ctxBubbleJoint.underlayDisplayed = false;
+                
+                // Scale back to normal size
+                scaleBubble(DEFAULT_BUBBLE_SIZE_DP);
+                logInfo("Underlay closed, scaled bubble to " + DEFAULT_BUBBLE_SIZE_DP + "dp");
+            }
         }
 
         /**
@@ -399,65 +431,72 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 }
                 
                 /**
-/**
- * Handles the bubble dragging motion and constrains position to screen bounds
- * 
- * @param event The motion event
- */
-private void handleBubbleDrag(MotionEvent event) {
-    // Calculate distance moved
-    float movedX = event.getRawX() - initialTouchX;
-    float movedY = event.getRawY() - initialTouchY;
-    
-    // If moved significantly, not a click
-    if (Math.abs(movedX) > DRAG_THRESHOLD || Math.abs(movedY) > DRAG_THRESHOLD) {
-        isClick = false;
-    }
-    
-    // Calculate new position
-    int newX = initialX + (int) movedX;
-    int newY = initialY + (int) movedY;
-    
-    // Get screen dimensions using bubbleView's context
-    int screenWidth = getScreenWidth();
-    int screenHeight = getScreenHeight();
-    
-    // Constrain X to [0, screenWidth - bubbleSize]
-    params.x = Math.max(0, Math.min(newX, screenWidth - bubbleSize));
-    
-    // Constrain Y as well if needed (optional)
-    params.y = Math.max(0, Math.min(newY, screenHeight - bubbleSize));
-    
-    // Update the layout
-    updateBubblePosition();
-    
-    // Update context menu position
-    if (contextMenu != null) {
-        contextMenu.updateCoords(params.x, params.y);
-    }
-}
+                 * Handles the bubble dragging motion and constrains position to screen bounds
+                 * 
+                 * @param event The motion event
+                 */
+                private void handleBubbleDrag(MotionEvent event) {
+                    // Calculate distance moved
+                    float movedX = event.getRawX() - initialTouchX;
+                    float movedY = event.getRawY() - initialTouchY;
+                    
+                    // If moved significantly, not a click
+                    if (Math.abs(movedX) > DRAG_THRESHOLD || Math.abs(movedY) > DRAG_THRESHOLD) {
+                        isClick = false;
+                    }
+                    
+                    // Calculate new position
+                    int newX = initialX + (int) movedX;
+                    int newY = initialY + (int) movedY;
+                    
+                    // Get screen dimensions using bubbleView's context
+                    int screenWidth = getScreenWidth();
+                    int screenHeight = getScreenHeight();
+                    
+                    // Constrain X to [0, screenWidth - bubbleSize]
+                    params.x = Math.max(0, Math.min(newX, screenWidth - params.width));
+                    
+                    // Constrain Y as well if needed (optional)
+                    params.y = Math.max(0, Math.min(newY, screenHeight - params.height));
+                    
+                    // Update the layout
+                    if(underlayView != null && underlayView.isVisible){
+                        // Calculate center position of the bubble
+                        int bubbleCenterX = params.x + (params.width / 2);
+                        int bubbleCenterY = params.y + (params.height / 2);
+                        
+                        // Pass center coordinates to the underlay
+                        underlayView.setCoords(bubbleCenterX, bubbleCenterY);
+                    }
+                    updateBubblePosition();
+                    
+                    // Update context menu position
+                    if (contextMenu != null) {
+                        contextMenu.updateCoords(params.x, params.y);
+                    }
+                }
 
-/**
- * Gets the screen width
- * @return Width of the screen in pixels
- */
-private int getScreenWidth() {
-    WindowManager windowManager = (WindowManager) bubbleView.getContext().getSystemService(Context.WINDOW_SERVICE);
-    DisplayMetrics metrics = new DisplayMetrics();
-    windowManager.getDefaultDisplay().getMetrics(metrics);
-    return metrics.widthPixels;
-}
+                /**
+                 * Gets the screen width
+                 * @return Width of the screen in pixels
+                 */
+                private int getScreenWidth() {
+                    WindowManager windowManager = (WindowManager) bubbleView.getContext().getSystemService(Context.WINDOW_SERVICE);
+                    DisplayMetrics metrics = new DisplayMetrics();
+                    windowManager.getDefaultDisplay().getMetrics(metrics);
+                    return metrics.widthPixels;
+                }
 
-/**
- * Gets the screen height
- * @return Height of the screen in pixels
- */
-private int getScreenHeight() {
-    WindowManager windowManager = (WindowManager) bubbleView.getContext().getSystemService(Context.WINDOW_SERVICE);
-    DisplayMetrics metrics = new DisplayMetrics();
-    windowManager.getDefaultDisplay().getMetrics(metrics);
-    return metrics.heightPixels;
-}
+                /**
+                 * Gets the screen height
+                 * @return Height of the screen in pixels
+                 */
+                private int getScreenHeight() {
+                    WindowManager windowManager = (WindowManager) bubbleView.getContext().getSystemService(Context.WINDOW_SERVICE);
+                    DisplayMetrics metrics = new DisplayMetrics();
+                    windowManager.getDefaultDisplay().getMetrics(metrics);
+                    return metrics.heightPixels;
+                }
                 /**
                  * Handles the release of the bubble (animation and click events)
                  * 
@@ -528,6 +567,15 @@ private int getScreenHeight() {
                         if (bubbleView != null && bubbleView.isAttachedToWindow()) {
                             params.x = (Integer) animation.getAnimatedValue();
                             updateBubblePosition();
+                            
+                            if(underlayView != null && underlayView.isVisible){
+                                // Calculate center position during animation
+                                int bubbleCenterX = params.x + (params.width / 2);
+                                int bubbleCenterY = params.y + (params.height / 2);
+                                
+                                // Pass center coordinates to underlay
+                                underlayView.setCoords(bubbleCenterX, bubbleCenterY);
+                            }
                         } else {
                             animation.cancel();
                         }
@@ -568,7 +616,7 @@ private int getScreenHeight() {
                 // Send event to React Native
                 sendEventToReactNative(EVENT_BUBBLE_CLICKED, null);
                 
-                if (ctxBubbleJoint.underlayDisplayed) {
+                if (underlayView != null) {
                     launchMainApp();
                 } else {
                     // Expand the bubble when clicked
@@ -576,6 +624,7 @@ private int getScreenHeight() {
                 }
                 
                 toggleBubbleClosingUnderlay();
+                //here
             } catch (Exception e) {
                 Log.e(TAG, "Error handling bubble click: " + e.getMessage(), e);
             }
@@ -633,7 +682,7 @@ private int getScreenHeight() {
             }
             
             removeBubbleView();
-            removeUnderlayView();
+            cleanupUnderlay();
             
             logInfo("Floating bubble service destroyed");
         }
@@ -655,18 +704,12 @@ private int getScreenHeight() {
         }
         
         /**
-         * Removes the underlay view from the window manager
+         * Cleans up the underlay view
          */
-        private void removeUnderlayView() {
-            try {
-                if (underlayView != null) {
-                    if (underlayView.isAttachedToWindow()) {
-                        windowManager.removeView(underlayView);
-                    }
-                    underlayView = null;
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Error removing underlay view: " + e.getMessage(), e);
+        private void cleanupUnderlay() {
+            if (underlayView != null) {
+                underlayView.hide();
+                underlayView = null;
             }
         }
 
