@@ -4,6 +4,8 @@ import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import com.walter.RoomSelection;
+import com.walter.Brightness;
 
 public class ContextMenuView {
     public int x;
@@ -19,10 +21,9 @@ public class ContextMenuView {
         
         // Initialize items
         this.items = new ContextMenuItem[3];
-        for (int i = 0; i < 3; i++) {
-            items[i] = new ContextMenuItem(context, underlay, i);
-            items[i].setCoords(this.x, this.y);
-        }
+        items[0] = new ContextMenuItem(context, underlay, 0);
+        items[1] = new Brightness(context, underlay, 1);
+        items[2] = new RoomSelection(context, underlay, 2);
         
         // Initialize coordinate display
         coordsText = new TextView(this.context);
@@ -58,12 +59,10 @@ public class ContextMenuView {
         this.y = y;
         
         // When first showing, we'll animate via showAtPosition instead
-        if (!isFirstShow) {
-            for (ContextMenuItem item : items) {
-                item.setCoords(x, y);
-            }
+        for (ContextMenuItem item : items) {
+            item.setCoords(x, y);
         }
-        
+    
         // Update coordinates text
         coordsText.post(() -> {
             float halfTW = coordsText.getWidth() / 2f;
@@ -103,6 +102,11 @@ public class ContextMenuView {
      */
     private void updateDisplay() {
         coordsText.setText("X: " + x + " | Y: " + y);
+    }
+    public void show(){
+        for (int i = 0; i < 3; i++) {
+            items[i].startAnim(x,y);
+        }
     }
     
     /**

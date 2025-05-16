@@ -156,23 +156,34 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
         private static final int DEFAULT_BUBBLE_SIZE_DP = 48; // Fixed: Changed from 12 to a more reasonable size (48dp)
         private static final int INITIAL_Y_OFFSET = 150;
         private static final int DEFAULT_UNDERLAY_COLOR = Color.argb(20, 0, 0, 0);
+        private boolean clicked = false;
         private BubbleClosingManager closingManager;
+        
         @Override
         public void onCreate() {
             super.onCreate();
             windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-             closingManager = new BubbleClosingManager(this, new BubbleClosingZone.BubbleCloseListener() {
-            @Override
-            public void onBubbleClose() {
-                // Stop the bubble service when closing is requested
-                stopSelf();
-                
-                // Optionally notify React Native about the close event
-                sendEventToReactNative("bubble_closed", null);
-                
-                Log.d(TAG, "Bubble closed via closing zone");
+            closingManager = new BubbleClosingManager(this, new BubbleClosingZone.BubbleCloseListener() {
+                @Override
+                public void onBubbleClose() {
+                    // Stop the bubble service when closing is requested
+                    stopSelf();
+                    
+                    // Optionally notify React Native about the close event
+                    sendEventToReactNative("bubble_closed", null);
+                    
+                    Log.d(TAG, "Bubble closed via closing zone");
+                }
+            });
+            
+            // Create underlay if it doesn't exist
+            if (underlayView == null) {
+                underlayView = new UnderlayView(this);
+                underlayView.setSetClicked((Boolean clicked) -> {
+                    this.clicked = clicked;
+                    Log.d("FloatingBubble", "Clicked = " + clicked);
+                });
             }
-        });
         }
 
         /**
@@ -228,7 +239,11 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 // Convert newSize from dp to pixels
                 float newSizePxFloat = convertDpToPixel(newSizeDp, bubbleView.getContext());
                 int newSizePx = (int) newSizePxFloat;
-                this.underlayView.setBubbleSize(newSizeDp);
+                
+                if (underlayView != null) {
+                    underlayView.setBubbleSize(newSizeDp);
+                }
+                
                 // Log the size conversion for debugging
                 logInfo("Scaling bubble from " + currentSizePx + "px to " + newSizePx + 
                        "px (" + newSizeDp + "dp)");
@@ -265,71 +280,26 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
          * Toggles the visibility of underlay view for bubble context menu
          */
         private void toggleBubbleClosingUnderlay() {
-            // Use our new UnderlayView class
-            if (underlayView == null) {
-                // Create underlay if it doesn't exist
-                underlayView = new UnderlayView(this);
-                
-                // Set up touch listener for the underlay
-                underlayView.setOnUnderlayTouchListener(() -> {
-                    // When user touches underlay, deactivate menu and hide underlay
-                    if (contextMenu != null) {
-                        contextMenu.setActive(false);
-                    }
-                    
-                    hideUnderlay();
-                });
-            }
-            
-            if (underlayView.isVisible) {
-                // Hide the underlay
-                hideUnderlay();
+            if (underlayView != null) {
+                if (underlayView.isVisible) {
+                    // Hide the underlay
+                    underlayView.makeUnclickable();
+                } else {
+                    // Show the underlay
+                    underlayView.makeClickable();
+                }
             } else {
-                // Show the underlay
-                showUnderlay();
-                
+                Log.e(TAG, "Cannot toggle underlay - underlay view is null");
             }
         }
         
-private void showUnderlay() {
-    // Get underlay color from intent if available
-    int underlayColor = (cachedIntent != null && cachedIntent.hasExtra("underlayColor")) 
-            ? cachedIntent.getIntExtra("underlayColor", DEFAULT_UNDERLAY_COLOR)
-            : DEFAULT_UNDERLAY_COLOR;
-    
-    // Calculate bubble center position
-    int bubbleCenterX = params.x + (params.width / 2);
-    int bubbleCenterY = params.y + (params.height / 2);
-    
-    // Show the underlay with specified color
-    underlayView.show(underlayColor);
-    
-    // Set coordinates for the underlay and trigger menu animation
-    underlayView.setCoords(bubbleCenterX, bubbleCenterY);
-    ctxBubbleJoint.underlayDisplayed = true;
-    
-    // Scale bubble to expanded size
-    scaleBubble(EXPANDED_BUBBLE_SIZE);
-    
-    // Make sure bubble is on top of underlay
-    removeBubbleView();
-    initializeBubble(cachedIntent);
-    
-    logInfo("Underlay displayed, scaled bubble to " + EXPANDED_BUBBLE_SIZE + "dp");
-}
-        /**
-         * Hides the underlay
-         */
-        private void hideUnderlay() {
+        private void showUnderlay() {
             if (underlayView != null) {
-                underlayView.hide();
-                ctxBubbleJoint.underlayDisplayed = false;
-                
-                // Scale back to normal size
-                scaleBubble(DEFAULT_BUBBLE_SIZE_DP);
-                logInfo("Underlay closed, scaled bubble to " + DEFAULT_BUBBLE_SIZE_DP + "dp");
+                // Get underlay color from intent if available
+                underlayView.makeClickable();
             }
         }
+        
 
         /**
          * Initializes the bubble view and its parameters
@@ -406,88 +376,86 @@ private void showUnderlay() {
          * @return View.OnTouchListener for the bubble
          */
         private View.OnTouchListener createBubbleTouchListener(final int bubbleSize) {
-        return new View.OnTouchListener() {
-            private boolean isClick = true;
-            private int initialX;
-            private int initialY;
-            private float initialTouchX;
-            private float initialTouchY;
-            
-            @Override
-
- 
-            /**
+            return new View.OnTouchListener() {
+                private boolean isClick = true;
+                private int initialX;
+                private int initialY;
+                private float initialTouchX;
+                private float initialTouchY;
+                
+                @Override
+                /**
                  * Handles the bubble dragging motion and constrains position to screen bounds
                  * 
                  * @param event The motion event
                  */
-public boolean onTouch(View v, MotionEvent event) {
-    try {
-        switch (event.getAction()) {
-            case MotionEvent.ACTION_DOWN:
-                // Record initial positions for drag calculation
-                isClick = true;
-                initialX = params.x;
-                initialY = params.y;
-                initialTouchX = event.getRawX();
-                initialTouchY = event.getRawY();
-                return true;
-                
-            case MotionEvent.ACTION_MOVE:
-                // Calculate distance moved
-                float movedX = event.getRawX() - initialTouchX;
-                float movedY = event.getRawY() - initialTouchY;
-                
-                // If moved significantly, not a click and we're dragging
-                if (Math.abs(movedX) > DRAG_THRESHOLD || Math.abs(movedY) > DRAG_THRESHOLD) {
-                    isClick = false;
-                    
-                    // Notify closing manager if drag just started
-                    if (!closingManager.isDragging()) {
-                        closingManager.onDragStart();
+                public boolean onTouch(View v, MotionEvent event) {
+                    try {
+                        switch (event.getAction()) {
+                            case MotionEvent.ACTION_DOWN:
+                                // Record initial positions for drag calculation
+                                isClick = true;
+                                initialX = params.x;
+                                initialY = params.y;
+                                initialTouchX = event.getRawX();
+                                initialTouchY = event.getRawY();
+                                return true;
+                                
+                            case MotionEvent.ACTION_MOVE:
+                                // Calculate distance moved
+                                float movedX = event.getRawX() - initialTouchX;
+                                float movedY = event.getRawY() - initialTouchY;
+                                
+                                // If moved significantly, not a click and we're dragging
+                                if (Math.abs(movedX) > DRAG_THRESHOLD || Math.abs(movedY) > DRAG_THRESHOLD) {
+                                    isClick = false;
+                                    
+                                    // Notify closing manager if drag just started
+                                    if (!closingManager.isDragging()) {
+                                        closingManager.onDragStart();
+                                    }
+                                }
+                                
+                                handleBubbleDrag(event);
+                                
+                                // Update closing manager during drag
+                                if (!isClick) {
+                                    closingManager.onDragMove(params.x, params.y, params.width);
+                                }
+                                
+                                return true;
+                                
+                            case MotionEvent.ACTION_UP:
+                                if (!isClick) {
+                                    // Log for debugging
+                                    Log.d(TAG, "Bubble released at x:" + params.x + ", y:" + params.y);
+                                    
+                                    // Check if bubble was released in closing zone
+                                    boolean releasedInClosingZone = closingManager.onDragEnd(
+                                            params.x, params.y, params.width);
+                                    
+                                    // Only proceed with normal release handling if not in closing zone
+                                    if (!releasedInClosingZone) {
+                                        handleBubbleRelease(event, bubbleSize);
+                                    } else {
+                                        Log.d(TAG, "Bubble released in closing zone");
+                                    }
+                                } else {
+                                    // It was a click, not a drag
+                                    handleBubbleClick();
+                                }
+                                return true;
+                                
+                            default:
+                                return false;
+                        }
+                    } catch (Exception e) {
+                        Log.e(TAG, "Error in bubble touch listener: " + e.getMessage(), e);
+                        // If an exception occurs, make sure to clean up properly
+                        closingManager.hide();
+                        return false;
                     }
                 }
-                
-                handleBubbleDrag(event);
-                
-                // Update closing manager during drag
-                if (!isClick) {
-                    closingManager.onDragMove(params.x, params.y, params.width);
-                }
-                
-                return true;
-                
-            case MotionEvent.ACTION_UP:
-                if (!isClick) {
-                    // Log for debugging
-                    Log.d(TAG, "Bubble released at x:" + params.x + ", y:" + params.y);
-                    
-                    // Check if bubble was released in closing zone
-                    boolean releasedInClosingZone = closingManager.onDragEnd(
-                            params.x, params.y, params.width);
-                    
-                    // Only proceed with normal release handling if not in closing zone
-                    if (!releasedInClosingZone) {
-                        handleBubbleRelease(event, bubbleSize);
-                    } else {
-                        Log.d(TAG, "Bubble released in closing zone");
-                    }
-                } else {
-                    // It was a click, not a drag
-                    handleBubbleClick();
-                }
-                return true;
-                
-            default:
-                return false;
-        }
-    } catch (Exception e) {
-        Log.e(TAG, "Error in bubble touch listener: " + e.getMessage(), e);
-        // If an exception occurs, make sure to clean up properly
-        closingManager.hide();
-        return false;
-    }
-}
 
                 private void handleBubbleDrag(MotionEvent event) {
                     // Calculate distance moved
@@ -514,7 +482,7 @@ public boolean onTouch(View v, MotionEvent event) {
                     params.y = Math.max(0, Math.min(newY, screenHeight - params.height));
                     
                     // Update the layout
-                    if(underlayView != null && underlayView.isVisible){
+                    if (underlayView != null) {
                         // Calculate center position of the bubble
                         int bubbleCenterX = params.x + (params.width / 2);
                         int bubbleCenterY = params.y + (params.height / 2);
@@ -551,6 +519,7 @@ public boolean onTouch(View v, MotionEvent event) {
                     windowManager.getDefaultDisplay().getMetrics(metrics);
                     return metrics.heightPixels;
                 }
+                
                 /**
                  * Handles the release of the bubble (animation and click events)
                  * 
@@ -622,7 +591,7 @@ public boolean onTouch(View v, MotionEvent event) {
                             params.x = (Integer) animation.getAnimatedValue();
                             updateBubblePosition();
                             
-                            if(underlayView != null && underlayView.isVisible){
+                            if (underlayView != null) {
                                 // Calculate center position during animation
                                 int bubbleCenterX = params.x + (params.width / 2);
                                 int bubbleCenterY = params.y + (params.height / 2);
@@ -661,29 +630,65 @@ public boolean onTouch(View v, MotionEvent event) {
             display.getSize(size);
             return size.x;
         }
-
+        
         /**
          * Handles the bubble click event
          */
-        private void handleBubbleClick() {
-            try {
-                // Send event to React Native
-                sendEventToReactNative(EVENT_BUBBLE_CLICKED, null);
-                
-                if (underlayView != null) {
-                    launchMainApp();
-                } else {
-                    // Expand the bubble when clicked
-                    scaleBubble(EXPANDED_BUBBLE_SIZE);
-                }
-                
-                toggleBubbleClosingUnderlay();
-                //here
-            } catch (Exception e) {
-                Log.e(TAG, "Error handling bubble click: " + e.getMessage(), e);
-            }
-        }
 
+private void handleBubbleClick() {
+    try {
+        // Send event to React Native
+        sendEventToReactNative(EVENT_BUBBLE_CLICKED, null);
+        
+        Log.d(TAG, "Bubble clicked. Current clicked state: " + clicked);
+        
+        if (clicked) {
+            // Bubble is already expanded, so collapse it and launch the main app
+            clicked = false;
+            
+            // Make underlay unclickable BEFORE launching main app
+            if (underlayView != null) {
+                Log.d(TAG, "Making underlay unclickable before launching main app");
+                underlayView.makeUnclickable();
+            }
+            
+            // Then launch main app
+            launchMainApp();
+        } else {
+            // Bubble is collapsed, so expand it
+            clicked = true;
+            
+            // First ensure underlay exists (should already from onCreate, but check anyway)
+            if (underlayView == null) {
+                Log.d(TAG, "Creating new underlay view as it was null");
+                underlayView = new UnderlayView(this);
+                underlayView.setSetClicked((Boolean clickedState) -> {
+                    this.clicked = clickedState;
+                    Log.d("FloatingBubble", "Clicked state updated to: " + clickedState);
+                });
+            }
+            
+            // Important: First make sure it's visible before making clickable
+            // to ensure correct sequence of operations
+            if (!underlayView.isVisible) {
+                Log.d(TAG, "Underlay not visible, showing it first");
+                underlayView.showClickTransparent(); // Show but keep transparent initially
+            }
+            
+            // Finally make it clickable in a separate step
+            Log.d(TAG, "Making underlay clickable");
+            underlayView.makeClickable();
+            
+            // Expand the bubble
+            scaleBubble(EXPANDED_BUBBLE_SIZE);
+            
+            // Log the current state
+            Log.d(TAG, "After click: Bubble expanded, underlay clickable: " + underlayView.isClickable);
+        }
+    } catch (Exception e) {
+        Log.e(TAG, "Error handling bubble click: " + e.getMessage(), e);
+    }
+}
         /**
          * Launches the main application activity
          */
@@ -727,24 +732,28 @@ public boolean onTouch(View v, MotionEvent event) {
         /**
          * Cleans up resources when the service is destroyed
          */
- @Override
-    public void onDestroy() {
-        super.onDestroy();
-        
-        if (ctxBubbleJoint != null) {
-            //ctxBubbleJoint.unsubscribe();
+        @Override
+        public void onDestroy() {
+            super.onDestroy();
+            
+            if (ctxBubbleJoint != null && contextMenu != null) {
+                ctxBubbleJoint.unsubscribe(contextMenu);
+            }
+            
+            // Clean up closing manager
+            if (closingManager != null) {
+                closingManager.cleanup();
+                closingManager = null;
+            }
+            
+            // Clean up underlay before removing bubble view
+            cleanupUnderlay();
+            
+            // Remove bubble view 
+            removeBubbleView();
+            
+            logInfo("Floating bubble service destroyed");
         }
-        
-        // Clean up closing manager
-        if (closingManager != null) {
-            closingManager.cleanup();
-        }
-        
-        removeBubbleView();
-        cleanupUnderlay();
-        
-        logInfo("Floating bubble service destroyed");
-    }
 
         /**
          * Removes the bubble view from the window manager
@@ -764,13 +773,18 @@ public boolean onTouch(View v, MotionEvent event) {
         
         /**
          * Cleans up the underlay view
-         */
-        private void cleanupUnderlay() {
-            if (underlayView != null) {
-                underlayView.hide();
-                underlayView = null;
-            }
+         */private void cleanupUnderlay() {
+    try {
+        if (underlayView != null) {
+            boolean hidden = underlayView.hide();
+            logInfo("Underlay view hide() returned: " + hidden);
+            underlayView = null;
+            logInfo("Underlay view reference cleared");
         }
+    } catch (Exception e) {
+        Log.e(TAG, "Error cleaning up underlay view: " + e.getMessage(), e);
+    }
+}
 
         /**
          * Binding method for the service (not used in this implementation)

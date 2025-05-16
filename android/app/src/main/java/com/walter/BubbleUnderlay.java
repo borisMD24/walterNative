@@ -3,163 +3,189 @@ package com.walter;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
+import android.util.Log;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
-import android.util.Log;
 
 /**
  * BubbleUnderlay
- * 
- * A class that manages the semi-transparent underlay that appears when the floating bubble
- * is clicked. It serves as a backdrop for the context menu and handles touch events
- * outside the bubble area.
+ *
+ * A full-screen view that appears behind the floating bubble and context menu.
+ * This underlay becomes semi-transparent and touch-interactive when shown, and
+ * returns to a fully transparent, click-through state when hidden.
+ *
+ * It helps detect taps outside the floating UI for dismissing menus or bubbles.
  */
 public class BubbleUnderlay {
+
     private static final String TAG = "BubbleUnderlay";
-    
+
     private final Context context;
     private final WindowManager windowManager;
     private View underlayView;
     private BubbleUnderlayListener listener;
-    
+    private boolean isActive = false;
+
     /**
-     * Interface for listening to underlay events
+     * Listener interface for underlay touch events
      */
     public interface BubbleUnderlayListener {
         void onUnderlayTouched();
     }
-    
+
     /**
      * Constructor
-     * 
-     * @param context The application context
+     *
+     * @param context Application context
      */
     public BubbleUnderlay(Context context) {
         this.context = context;
         this.windowManager = (WindowManager) context.getSystemService(Context.WINDOW_SERVICE);
+        createUnderlayView();
     }
-    
+
     /**
-     * Sets a listener for underlay touch events
-     * 
-     * @param listener The listener to set
+     * Sets the listener for touch events on the underlay
+     *
+     * @param listener A BubbleUnderlayListener
      */
     public void setListener(BubbleUnderlayListener listener) {
         this.listener = listener;
     }
-    
+
     /**
-     * Shows the underlay on screen
-     * 
-     * @return true if the underlay was shown successfully
+     * Creates and configures the underlay view
+     */
+    private void createUnderlayView() {
+        if (underlayView != null) return;
+
+        underlayView = new View(context);
+        underlayView.setBackgroundColor(Color.TRANSPARENT);
+
+        WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL |
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN |
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT
+        );
+        params.gravity = Gravity.TOP | Gravity.START;
+
+        underlayView.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN && isActive && listener != null) {
+                listener.onUnderlayTouched();
+            }
+            return true;
+        });
+
+        try {
+            windowManager.addView(underlayView, params);
+            Log.d(TAG, "Underlay view created");
+        } catch (Exception e) {
+            Log.e(TAG, "Error adding underlay view: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Shows the underlay with semi-transparent background and touch interaction
+     *
+     * @return true if successfully shown
      */
     public boolean show() {
-        try {
-            // If underlay is already shown, return
-            if (underlayView != null) {
-                return false;
-            }
-            
-            // Create a full-screen semi-transparent view
-            underlayView = new View(context);
-            underlayView.setBackgroundColor(Color.argb(50, 0, 0, 0)); // Semi-transparent black
-            
-            // Configure layout parameters for the underlay
-            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | 
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            );
-            params.gravity = Gravity.TOP | Gravity.START;
+        if (underlayView == null) {
+            createUnderlayView();
+        }
 
-            // Add touch listener to detect taps outside the bubble
-            underlayView.setOnTouchListener((v, event) -> {
-                // Notify listener of underlay touch
-                if (listener != null) {
-                    listener.onUnderlayTouched();
-                }
-                return true; // Consume the event
-            });
-
-            // Add the underlay view
-            windowManager.addView(underlayView, params);
-            
-            Log.d(TAG, "Underlay view shown");
-            return true;
-        } catch (Exception e) {
-            Log.e(TAG, "Error showing underlay: " + e.getMessage(), e);
+        if (isActive) {
             return false;
         }
+
+        setColor(Color.argb(50, 0, 0, 0)); // semi-transparent black
+        setInterceptTouches(true);
+        isActive = true;
+
+        Log.d(TAG, "Underlay shown");
+        return true;
     }
-    
+
     /**
-     * Hides the underlay from screen
-     * 
-     * @return true if the underlay was hidden successfully
+     * Hides the underlay, making it fully transparent and click-through
+     *
+     * @return true if successfully hidden
      */
     public boolean hide() {
-        try {
-            if (underlayView != null && underlayView.isAttachedToWindow()) {
-                windowManager.removeView(underlayView);
-                underlayView = null;
-                Log.d(TAG, "Underlay view hidden");
-                return true;
-            }
-            return false;
-        } catch (Exception e) {
-            Log.e(TAG, "Error hiding underlay: " + e.getMessage(), e);
+        if (underlayView == null || !underlayView.isAttachedToWindow()) {
             return false;
         }
+
+        setColor(Color.TRANSPARENT);
+        setInterceptTouches(false);
+        isActive = false;
+
+        Log.d(TAG, "Underlay hidden");
+        return true;
     }
-    
+
     /**
-     * Checks if the underlay is currently displayed
-     * 
-     * @return true if the underlay is displayed
+     * Checks whether the underlay is currently shown and active
+     *
+     * @return true if active
      */
     public boolean isShowing() {
-        return underlayView != null && underlayView.isAttachedToWindow();
+        return isActive;
     }
-    
+
     /**
-     * Updates the color of the underlay
-     * 
-     * @param color ARGB color value
+     * Updates the underlay background color
+     *
+     * @param color ARGB color
      */
     public void setColor(int color) {
         if (underlayView != null) {
             underlayView.setBackgroundColor(color);
         }
     }
-    
+
     /**
-     * Sets the touch interceptor flag on the underlay
-     * 
-     * @param interceptTouches true to intercept all touches, false to allow touches through
+     * Enables or disables touch interception on the underlay
+     *
+     * @param intercept true to intercept touches, false to allow passthrough
      */
-    public void setInterceptTouches(boolean interceptTouches) {
+    public void setInterceptTouches(boolean intercept) {
         if (underlayView != null && underlayView.isAttachedToWindow()) {
             WindowManager.LayoutParams params = (WindowManager.LayoutParams) underlayView.getLayoutParams();
-            
-            if (interceptTouches) {
+
+            if (intercept) {
                 params.flags &= ~WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
             } else {
                 params.flags |= WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;
             }
-            
-            windowManager.updateViewLayout(underlayView, params);
+
+            try {
+                windowManager.updateViewLayout(underlayView, params);
+            } catch (Exception e) {
+                Log.e(TAG, "Error updating underlay layout: " + e.getMessage(), e);
+            }
         }
     }
-    
+
     /**
-     * Release resources and clean up
+     * Removes the underlay view and cleans up resources
      */
     public void release() {
-        hide();
-        listener = null;
+        try {
+            if (underlayView != null && underlayView.isAttachedToWindow()) {
+                windowManager.removeView(underlayView);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error removing underlay view: " + e.getMessage(), e);
+        } finally {
+            underlayView = null;
+            listener = null;
+        }
     }
 }
