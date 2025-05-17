@@ -28,7 +28,6 @@ public class RoomSelection extends ContextMenuItem {
         }).start();
 
     // Envoi de notification
-    sendNotification();
 
     // Callback éventuel
     if (clickListener != null) {

@@ -130,4 +130,10 @@ public class ContextMenuView {
             items[i].hide(this.x, this.y);
         }
     }
+    public void bubbleFixed(){
+        
+        for (int i = 0; i < 3; i++) {
+            items[i].bubbleFixed();
+        }
+    }
 }

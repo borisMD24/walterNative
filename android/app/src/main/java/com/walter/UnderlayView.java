@@ -352,4 +352,7 @@ public class UnderlayView {
             rootLayout.setBackgroundColor(color);
         }
     }
+    public void bubbleFixed(){
+        this.contextMenu.bubbleFixed();
+    }
 }

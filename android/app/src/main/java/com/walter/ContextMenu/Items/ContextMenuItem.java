@@ -157,59 +157,6 @@ public class ContextMenuItem {
     /**
      * Send a notification when the circle is clicked
      */
-    public void sendNotification() {
-        // Create notification channel for Android 8.0+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            CharSequence name = "Context Menu Channel";
-            String description = "Notifications from context menu items";
-            int importance = NotificationManager.IMPORTANCE_DEFAULT;
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, name, importance);
-            channel.setDescription(description);
-            
-            NotificationManager notificationManager = ctx.getSystemService(NotificationManager.class);
-            notificationManager.createNotificationChannel(channel);
-        }
-        
-        // Create notification content based on the item number
-        String title = "Menu Action";
-        String message;
-        
-        switch (nth) {
-            case 0:
-                message = "Red circle action triggered";
-                break;
-            case 1:
-                message = "Green circle action triggered";
-                break;
-            case 2:
-                message = "Blue circle action triggered";
-                break;
-            default:
-                message = "Circle " + nth + " action triggered";
-                break;
-        }
-        
-        // Create an intent that will be triggered when notification is tapped
-        Intent intent = new Intent(ctx, ctx.getClass()); // Replace with the actual activity you want to open
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        PendingIntent pendingIntent = PendingIntent.getActivity(ctx, 0, intent, 
-                PendingIntent.FLAG_IMMUTABLE);
-        
-        // Build the notification - USING CURRENT ICON
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(ctx, CHANNEL_ID)
-                .setSmallIcon(iconID) // Using current icon from drawable resources
-                .setContentTitle(title)
-                .setContentText(message)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true);
-        
-        // Show the notification
-        NotificationManager notificationManager = 
-                (NotificationManager) ctx.getSystemService(Context.NOTIFICATION_SERVICE);
-        notificationManager.notify(NOTIFICATION_ID + nth, builder.build());
-    }
-    
     public void setBubbleSize(int bubbleSize) {
         this.bubbleSize = bubbleSize *2;
         this.circleSize = bubbleSize*2;
@@ -249,7 +196,7 @@ public class ContextMenuItem {
         
         CoordinateConverter.Polar computedRotation = new CoordinateConverter.Polar(
             Math.abs(normalXN1To1) * 200, 
-            ((this.nth-1) * Math.abs(normalXN1To1) * (Math.PI/3)) + normalX * Math.PI
+            ((this.nth-1) * Math.abs(normalXN1To1 * (Math.PI/3))) + normalX * Math.PI
         );
         
         Cartesian c = cc.polarToCartesian(computedRotation);
@@ -291,17 +238,10 @@ public class ContextMenuItem {
                         .setDuration(100);
                 }
             }).start();
-
-        // Envoi de notification
-        sendNotification();
-
         // Callback éventuel
         if (clickListener != null) {
             clickListener.onMenuItemClick(nth);
         }
-
-        // Feedback immédiat
-        Toast.makeText(ctx, "Menu item " + nth + " clicked", Toast.LENGTH_SHORT).show();
     }
 
     /**
@@ -504,5 +444,8 @@ public class ContextMenuItem {
         if (containerView != null && containerView.getParent() != null) {
             ((ViewGroup) containerView.getParent()).removeView(containerView);
         }
+    }
+    public void bubbleFixed(){
+        
     }
 }

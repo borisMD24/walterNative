@@ -29,6 +29,10 @@ import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.modules.core.DeviceEventManagerModule;
 import android.content.res.Resources;
 import com.walter.BubbleClosingZone;
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
+import android.animation.ValueAnimator;
+import android.view.animation.DecelerateInterpolator;
 
 /**
  * FloatingBubbleModule
@@ -46,7 +50,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
     private static ReactApplicationContext reactContext;
     private static int lastBubbleX = 0;
     private static int lastBubbleY = 0;
-    private static ContextMenuBubbleJoint ctxBubbleJoint;
     private static UdpLogger logger;
 
     /**
@@ -57,7 +60,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
     public FloatingBubbleModule(ReactApplicationContext context) {
         super(context);
         reactContext = context;
-        ctxBubbleJoint = new ContextMenuBubbleJoint();
         initializeLogger();
     }
 
@@ -148,7 +150,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
         private WindowManager.LayoutParams params;
         private UnderlayView underlayView;
         private Intent cachedIntent = null;
-        private ContextMenu contextMenu = null;
         private static final int ANIMATION_DURATION = 300;
         private static final int DEFAULT_BUBBLE_SIZE = 150;
         private static final int DRAG_THRESHOLD = 5;
@@ -198,11 +199,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 }
                 
                 // Initialize context menu if needed
-                if (contextMenu == null) {
-                    // Initialize with null since we'll use our UnderlayView class now
-                    contextMenu = new ContextMenu(null);
-                    ctxBubbleJoint.subscribe(contextMenu);
-                }
                 // Cache intent for later recreation
                 cachedIntent = intent;
             } catch (Exception e) {
@@ -341,9 +337,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 windowManager.addView(bubbleView, params);
                 
                 // Update context menu if it exists
-                if (contextMenu != null) {
-                    contextMenu.updateCoords(params.x, params.y);
-                }
                 
                 updateBubblePosition();
             } catch (Exception e) {
@@ -493,9 +486,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                     updateBubblePosition();
                     
                     // Update context menu position
-                    if (contextMenu != null) {
-                        contextMenu.updateCoords(params.x, params.y);
-                    }
                 }
 
                 /**
@@ -553,7 +543,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                     // Update bubble joint position
                     DisplayMetrics metrics = new DisplayMetrics();
                     windowManager.getDefaultDisplay().getMetrics(metrics);
-                    ctxBubbleJoint.setIsOnLeft(params.x < metrics.widthPixels / 2);
                     
                     // Save last position for service restarts
                     lastBubbleX = params.x;
@@ -570,53 +559,61 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
          * 
          * @param bubbleSize The size of the bubble
          */
-        private void animateBubbleToEdge(int bubbleSize) {
+private void animateBubbleToEdge(int bubbleSize) {
+    try {
+        int screenWidth = getScreenWidth();
+        int halfScreenWidth = screenWidth / 2;
+
+        // Determine end position (left or right edge)
+        final int startX = params.x;
+        final int endX = (startX < halfScreenWidth) ? 0 : screenWidth - bubbleSize;
+
+        // Create and configure the animator
+        ValueAnimator animator = ValueAnimator.ofInt(startX, endX);
+        animator.setDuration(ANIMATION_DURATION);
+        animator.setInterpolator(new DecelerateInterpolator(1.5f));
+
+        animator.addUpdateListener(animation -> {
             try {
-                int screenWidth = getScreenWidth();
-                int halfScreenWidth = screenWidth / 2;
-                
-                // Determine end position (left or right edge)
-                final int startX = params.x;
-                final int endX = params.x < halfScreenWidth ? 0 : screenWidth - bubbleSize;
-                
-                // Create and configure the animator
-                ValueAnimator animator = ValueAnimator.ofInt(startX, endX);
-                animator.setDuration(ANIMATION_DURATION);
-                animator.setInterpolator(new DecelerateInterpolator(1.5f));
-                
-                // Update the bubble position during animation
-                animator.addUpdateListener(animation -> {
-                    try {
-                        if (bubbleView != null && bubbleView.isAttachedToWindow()) {
-                            params.x = (Integer) animation.getAnimatedValue();
-                            updateBubblePosition();
-                            
-                            if (underlayView != null) {
-                                // Calculate center position during animation
-                                int bubbleCenterX = params.x + (params.width / 2);
-                                int bubbleCenterY = params.y + (params.height / 2);
-                                
-                                // Pass center coordinates to underlay
-                                underlayView.setCoords(bubbleCenterX, bubbleCenterY);
-                            }
-                        } else {
-                            animation.cancel();
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error in edge animation: " + e.getMessage(), e);
-                        animation.cancel();
+                if (bubbleView != null && bubbleView.isAttachedToWindow()) {
+                    params.x = (Integer) animation.getAnimatedValue();
+                    updateBubblePosition();
+
+                    if (underlayView != null) {
+                        int bubbleCenterX = params.x + (params.width / 2);
+                        int bubbleCenterY = params.y + (params.height / 2);
+                        underlayView.setCoords(bubbleCenterX, bubbleCenterY);
                     }
-                });
-                
-                animator.start();
-                
-                // Save final position for service restarts
-                lastBubbleX = endX;
-                lastBubbleY = params.y;
+                } else {
+                    animation.cancel();
+                }
             } catch (Exception e) {
-                Log.e(TAG, "Error animating bubble to edge: " + e.getMessage(), e);
+                Log.e(TAG, "Error in edge animation: " + e.getMessage(), e);
+                animation.cancel();
             }
-        }
+        });
+
+        animator.addListener(new AnimatorListenerAdapter() {
+            @Override
+            public void onAnimationEnd(Animator animation) {
+                try {
+                    lastBubbleX = endX;
+                    lastBubbleY = params.y;
+                    if (underlayView != null) {
+                        underlayView.bubbleFixed();
+                    }
+                } catch (Exception e) {
+                    Log.e(TAG, "Error at end of edge animation: " + e.getMessage(), e);
+                }
+            }
+        });
+
+        animator.start();
+
+    } catch (Exception e) {
+        Log.e(TAG, "Error animating bubble to edge: " + e.getMessage(), e);
+    }
+}
 
         /**
          * Gets the width of the screen
@@ -736,9 +733,6 @@ private void handleBubbleClick() {
         public void onDestroy() {
             super.onDestroy();
             
-            if (ctxBubbleJoint != null && contextMenu != null) {
-                ctxBubbleJoint.unsubscribe(contextMenu);
-            }
             
             // Clean up closing manager
             if (closingManager != null) {
