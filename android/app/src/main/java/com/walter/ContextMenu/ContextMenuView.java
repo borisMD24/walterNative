@@ -19,7 +19,7 @@ public class ContextMenuView {
     public ContextMenuContext menuContext;
     public ContextMenuView(Context context, ViewGroup underlay) {
         this.context = context;
-        this.menuContext = new ContextMenuContext();
+        this.menuContext = new ContextMenuContext(this.context);
         // Initialize items
         this.items = new ContextMenuItem[3];
         items[0] = new ContextMenuItem(context, underlay, 0, menuContext);
@@ -56,13 +56,8 @@ public class ContextMenuView {
      * This is used for subsequent position updates
      */
     public void setCoords(int x, int y) {
-        this.x = x;
-        this.y = y;
-        
+        menuContext.setBubbleCoords(x, y);
         // When first showing, we'll animate via showAtPosition instead
-        for (ContextMenuItem item : items) {
-            item.setCoords(x, y);
-        }
     
         // Update coordinates text
         coordsText.post(() -> {
@@ -79,12 +74,12 @@ public class ContextMenuView {
      * This should be called when the underlay is first shown
      */
     public void showAtPosition(int x, int y) {
-        this.x = x;
-        this.y = y;
+        menuContext.setBubbleX(x);
+        menuContext.setBubbleY(y);
         
         // Start the animation from bubble position for each item
         for (ContextMenuItem item : items) {
-            item.startAnim(x, y);
+            item.startAnim();
         }
         
         // Update coordinates text
@@ -106,7 +101,7 @@ public class ContextMenuView {
     }
     public void show(){
         for (int i = 0; i < 3; i++) {
-            items[i].startAnim(x,y);
+            items[i].startAnim();
         }
     }
     
@@ -115,27 +110,15 @@ public class ContextMenuView {
      */
     public void setBubbleSize(int size) {
         this.bubbleSize = size;
-        
-        // Pass the bubble size to all items
-        for (ContextMenuItem item : items) {
-            item.setBubbleSize(size);
-        }
-        
-        // Update position with the new size
-        for (ContextMenuItem item : items) {
-            item.setCoords(x, y);
-        }
+        menuContext.setBubbleSize(size);
     }
     public void hide(){
         for (int i = 0; i < 3; i++) {
-            items[i].hide(this.x, this.y);
+            items[i].hide();
         }
         menuContext.forceClose();
     }
     public void bubbleFixed(){
-        
-        for (int i = 0; i < 3; i++) {
-            items[i].bubbleFixed();
-        }
+        this.menuContext.setBubbleFixed();
     }
 }

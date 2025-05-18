@@ -13,7 +13,7 @@ public class Brightness extends ContextMenuItem {
     Brightness(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext) {
         super(ctx, parent, nth, menuContext);
         this.setIconID(R.drawable.brightnes);
-        brightnessComponent = new BrightnessComponent(ctx, parent);
+        brightnessComponent = new BrightnessComponent(ctx, parent, menuContext );
     }
     
     @Override
@@ -41,13 +41,7 @@ public class Brightness extends ContextMenuItem {
         super.click();
     }
     
-    public void setCoords(int x, int y) {
-        this.brightnessComponent.setCoords(x, y);
-        this.brightnessComponent.setNormalizedX(this.getNormalizedX());
-        super.setCoords(x, y);
-    }
-    
-    public void bubbleFixed() {
-        this.brightnessComponent.bubbleFixed();
+    public void setCoords() {
+        super.setCoords();
     }
 }

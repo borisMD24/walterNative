@@ -73,6 +73,10 @@ public class DraggableDot {
         dotView.setScaleX(0f);
         dotView.setScaleY(0f);
         dotView.setAlpha(0f);
+        this.brightnessComponent.menuContext.onBubbleFix(()->{
+            this.lastFixDotPosition = this.dotPosition;
+            this.onLeft = this.onLeftLive;
+        });
     }
     
     // Setter for startAngle
@@ -135,9 +139,9 @@ public class DraggableDot {
     }
     
     // Implementation of setNormalizedX to control rotation
-    public void setNormalizedX(float normalizedX) {
+    public void setNormalizedX() {
         // Clamp normalizedX between 0.0 and 1.0
-        normalizedX = Math.max(0.0f, Math.min(1.0f, normalizedX));
+        float normalizedX = Math.max(0.0f, Math.min(1.0f, brightnessComponent.menuContext.normalizedBubbleX));
         
         // Update live tracking of which side we're on (left or right)
         onLeftLive = normalizedX < 0.5f;
@@ -346,11 +350,6 @@ public class DraggableDot {
         if (parent != null && dotView != null) {
             parent.removeView(dotView);
         }
-    }
-
-    public void bubbleFixed(){
-        lastFixDotPosition = dotPosition;
-        onLeft = onLeftLive;
     }
 
     /**

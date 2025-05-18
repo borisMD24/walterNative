@@ -2,12 +2,30 @@ package com.walter;
 
 import java.util.function.Consumer;
 
+import android.util.DisplayMetrics;
+import android.view.WindowManager;
+import android.content.Context;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.function.Consumer;
 public class ContextMenuContext {
     public int nthOppened = -1;
     private Consumer<Integer> onCloseCallback = null;
-    
-    ContextMenuContext() {
-        // Default constructor
+    private List<Runnable> onMoveCallbacks = new ArrayList<>();
+    private List<Runnable> onBubbleResizeCallbacks = new ArrayList<>();
+    private List<Runnable> onBubbleFixedCallbacks = new ArrayList<>();
+    protected int bubbleY = 0;
+    protected float normalizedBubbleY = 0;
+    protected int bubbleX = 0;
+    protected float normalizedBubbleX = 0;
+    protected int screenHeight;
+    protected int screenWidth;
+    protected int bubbleSize = 200;
+    private Context ctx;
+    ContextMenuContext(Context ctx) {
+        this.ctx = ctx;
+        setScreenHeight();
+        setScreenWidth();
     }
     
     public void oppened(int nth, Consumer<Integer> onClose) {
@@ -26,7 +44,15 @@ public class ContextMenuContext {
         //set on close lambda
         this.onCloseCallback = onClose;
     }
-    
+    public void onMove(Runnable callback){
+        onMoveCallbacks.add(callback);
+    }
+    public void onBubbleResize(Runnable callback){
+        onBubbleResizeCallbacks.add(callback);
+    }
+    public void onBubbleFix(Runnable callback){
+        onBubbleFixedCallbacks.add(callback);
+    }
     public void close(int nth) {
         if(this.nthOppened == nth) {
             //run on close lambda
@@ -57,5 +83,40 @@ public class ContextMenuContext {
             this.nthOppened = -1;
             this.onCloseCallback = null;
         }
+    }
+    public void setScreenWidth() {
+        WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        wm.getDefaultDisplay().getMetrics(displayMetrics);
+        screenWidth = displayMetrics.widthPixels;
+    }
+    public void setScreenHeight() {
+        WindowManager wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
+        DisplayMetrics displayMetrics = new DisplayMetrics();
+        wm.getDefaultDisplay().getMetrics(displayMetrics);
+        screenHeight = displayMetrics.heightPixels;
+    }
+    public void setBubbleY(int y){
+        bubbleY = y;
+        normalizedBubbleY = (float) y / screenHeight;
+    }
+    public void setBubbleSize(int size){
+        bubbleSize = size;
+        onBubbleResizeCallbacks.forEach(Runnable::run);
+    }
+    public void setBubbleX(int x){
+        bubbleX = x;
+        float minX = bubbleSize;
+        float maxX = screenWidth - bubbleSize;
+        float clampedX = Math.max(minX, Math.min(bubbleX, maxX));
+        normalizedBubbleX = (clampedX - minX) / (maxX - minX);
+    }
+    public void setBubbleCoords(int x, int y){
+        setBubbleX(x);
+        setBubbleY(y);
+        onMoveCallbacks.forEach(Runnable::run);
+    }
+    public void setBubbleFixed(){
+        onBubbleFixedCallbacks.forEach(Runnable::run);
     }
 }

@@ -14,6 +14,7 @@ import android.widget.FrameLayout;
 import com.walter.DraggableDot;
 import com.walter.UdpLogger;
 import com.walter.HapticFeedbackManager;
+import com.walter.ContextMenuContext;
 
 public class BrightnessComponent {
     private Context ctx;
@@ -23,8 +24,6 @@ public class BrightnessComponent {
     public boolean isVisible = false;
     private int arcRadius = 400; // Default arc radius
     private DraggableDot dot;
-    private float centerX = 0f; // Custom center coordinates
-    private float centerY = 0f;
     private float rotationOffset = 315f;
     private HapticFeedbackManager hfm;
     // Arc parameters as instance variables
@@ -38,6 +37,7 @@ public class BrightnessComponent {
     private static final int ANIMATION_DURATION = 250;
     public boolean isHidingAfterAnimation = false;
     private static UdpLogger logger;
+    public ContextMenuContext menuContext;
     
     // Custom strong ease-out interpolator
     private static final Interpolator STRONG_EASE_OUT = new Interpolator() {
@@ -48,10 +48,15 @@ public class BrightnessComponent {
         }
     };
     
-    public BrightnessComponent(Context ctx, ViewGroup parent) {
+    public BrightnessComponent(Context ctx, ViewGroup parent, ContextMenuContext menuContext) {
         this.ctx = ctx;
         this.parent = parent;
-        
+        this.menuContext = menuContext;
+        this.menuContext.onMove(()->{
+            this.setCoords();
+            this.dot.setNormalizedX();
+            rotateWithNormalizedX();
+        });
         // Initialize HapticFeedbackManager early
         this.hfm = new HapticFeedbackManager(ctx);
 
@@ -194,9 +199,9 @@ public class BrightnessComponent {
      * Rotates the arc based on normalized X position (0 to 1)
      * @param normalizedX Value between 0 and 1 representing horizontal position
      */
-    public void rotateWithNormalizedX(float normalizedX) {
+    public void rotateWithNormalizedX() {
         // Ensure normalizedX is between 0 and 1
-        normalizedX = Math.max(0f, Math.min(1f, normalizedX));
+        float normalizedX = Math.max(0f, Math.min(1f, menuContext.normalizedBubbleX));
         
         // Map normalizedX to rotation angle (e.g., 0 to 360 degrees)
         float rotationAngle = normalizedX * 180f;
@@ -222,9 +227,7 @@ public class BrightnessComponent {
     /**
      * Sets the coordinates of the arc's center. Call before show/update.
      */
-    public void setCoords(float x, float y) {
-        this.centerX = x;
-        this.centerY = y;
+    public void setCoords() {
         if (arcView != null) {
             arcView.updateArcRect();
             arcView.invalidate();
@@ -271,20 +274,6 @@ public class BrightnessComponent {
         return new RectF();
     }
 
-    /**
-     * Implement the existing setNormalizedX method to use rotateWithNormalizedX
-     * Updated to accept float parameter to match getNormalizedX() return type
-     */
-    public void setNormalizedX(float normalizedX) {
-        // Ensure value is between 0 and 1
-        float normalizedValue = Math.max(0f, Math.min(1f, normalizedX));
-        this.dot.setNormalizedX(normalizedX);
-        rotateWithNormalizedX(normalizedValue);
-    }
-
-    public void bubbleFixed(){
-        this.dot.bubbleFixed();
-    }
     
     public void setValue(float value){
         this.value = Math.max(0f, Math.min(1f, value));
@@ -392,8 +381,8 @@ public class BrightnessComponent {
 
         public void updateArcRect() {
             // Use custom center if set, otherwise default to bottom-right
-            float cx = (centerX != 0f || centerY != 0f) ? centerX : (getWidth() - arcRadius);
-            float cy = (centerX != 0f || centerY != 0f) ? centerY : (getHeight() - arcRadius);
+            float cx = (menuContext.bubbleX != 0f || menuContext.bubbleY != 0f) ? menuContext.bubbleX : (getWidth() - arcRadius);
+            float cy = (menuContext.bubbleX != 0f || menuContext.bubbleY != 0f) ? menuContext.bubbleY : (getHeight() - arcRadius);
             arcRect.left = cx - arcRadius;
             arcRect.top = cy - arcRadius;
             arcRect.right = cx + arcRadius;
