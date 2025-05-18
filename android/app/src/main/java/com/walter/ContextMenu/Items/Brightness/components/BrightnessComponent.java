@@ -13,6 +13,7 @@ import android.view.animation.Interpolator;
 import android.widget.FrameLayout;
 import com.walter.DraggableDot;
 import com.walter.UdpLogger;
+import com.walter.HapticFeedbackManager;
 
 public class BrightnessComponent {
     private Context ctx;
@@ -25,7 +26,7 @@ public class BrightnessComponent {
     private float centerX = 0f; // Custom center coordinates
     private float centerY = 0f;
     private float rotationOffset = 315f;
-    
+    private HapticFeedbackManager hfm;
     // Arc parameters as instance variables
     private float startAngle = 315f;
     private float sweepAngle = 90f;
@@ -50,6 +51,9 @@ public class BrightnessComponent {
     public BrightnessComponent(Context ctx, ViewGroup parent) {
         this.ctx = ctx;
         this.parent = parent;
+        
+        // Initialize HapticFeedbackManager early
+        this.hfm = new HapticFeedbackManager(ctx);
 
         // Create the arc view
         arcView = new ArcView(ctx);
@@ -78,7 +82,7 @@ public class BrightnessComponent {
         }
     }
     
-    private static void logInfo(String message) {
+    public void logInfo(String message) {
         if (logger != null) {
             logger.info(message);
         }
@@ -423,7 +427,25 @@ public class BrightnessComponent {
         }
     }
     
-    public void setBrightnessValue(float value){
-        logInfo(Float.toString(value));
+    public void setBrightnessValue(float value) {
+        // Ensure value is between 0 and 1
+        float normalizedValue = Math.max(0f, Math.min(1f, value));
+        
+        // Log the brightness value
+        logInfo("Brightness set to: " + normalizedValue);
+        
+        // Store the value
+        setValue(normalizedValue);
+        
+        // Apply haptic feedback based on the brightness level
+        // Check if haptic feedback manager is initialized
+        if (hfm != null) {
+            // Higher brightness = stronger vibration
+            hfm.vibrate(normalizedValue, 5);
+        }
+    }
+    private void setNormalizedValueByArcTouch(float normalizedValue){
+        // should be called when the arc AND THE ARC ONLY is touched
+        // this value should be the touch angle normalized (0 to 1)
     }
 }

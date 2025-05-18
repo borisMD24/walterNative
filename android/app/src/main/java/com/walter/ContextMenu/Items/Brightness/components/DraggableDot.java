@@ -179,7 +179,7 @@ public class DraggableDot {
             super(context);
 
             paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-            paint.setColor(Color.RED);
+            paint.setColor(Color.WHITE);
             paint.setStyle(Paint.Style.FILL);
 
             dotShadowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -437,5 +437,8 @@ public class DraggableDot {
         
         // Start the animations
         finalAnimSet.start();
+    }
+    public void updateValueFromParent(float normalizedValue){
+        brightnessComponent.logInfo("Brightness set to: " + Float.toString(normalizedValue));
     }
 }

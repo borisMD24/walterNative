@@ -5,12 +5,13 @@ import com.walter.ContextMenuItem;
 import androidx.core.app.NotificationCompat;
 import android.widget.Toast;
 import com.walter.BrightnessComponent;
+import com.walter.ContextMenuContext;
 
 public class Brightness extends ContextMenuItem {
     private BrightnessComponent brightnessComponent;
     
-    Brightness(Context ctx, ViewGroup parent, int nth) {
-        super(ctx, parent, nth);
+    Brightness(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext) {
+        super(ctx, parent, nth, menuContext);
         this.setIconID(R.drawable.brightnes);
         brightnessComponent = new BrightnessComponent(ctx, parent);
     }
@@ -18,26 +19,14 @@ public class Brightness extends ContextMenuItem {
     @Override
     public void click() {
         // Animation de feedback
-        blueCircle.animate()
-            .scaleX(1.2f)
-            .scaleY(1.2f)
-            .setDuration(100)
-            .withEndAction(new Runnable() {
-                @Override
-                public void run() {
-                    blueCircle.animate()
-                        .scaleX(1.0f)
-                        .scaleY(1.0f)
-                        .setDuration(100);
-                }
-            }).start();
 
         // Toggle visibility state with proper error handling
         try {
             if (!brightnessComponent.isVisible) {  // Using the field directly as it's defined in BrightnessComponent
                 brightnessComponent.display();
+                this.menuContext.oppened(this.nth, (nth) -> this.brightnessComponent.undisplay());
             } else {
-                brightnessComponent.undisplay();
+                this.menuContext.close(this.nth);
             }
         } catch (Exception e) {
             Toast.makeText(ctx, "Error toggling brightness: " + e.getMessage(), Toast.LENGTH_SHORT).show();
@@ -48,9 +37,8 @@ public class Brightness extends ContextMenuItem {
         if (clickListener != null) {
             clickListener.onMenuItemClick(nth);
         }
-
-        // Feedback immédiat
-        Toast.makeText(ctx, "FROM ROOM", Toast.LENGTH_SHORT).show();
+        
+        super.click();
     }
     
     public void setCoords(int x, int y) {

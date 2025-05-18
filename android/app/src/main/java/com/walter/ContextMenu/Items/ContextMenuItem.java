@@ -31,6 +31,7 @@ import androidx.core.content.ContextCompat;
 import com.walter.CoordinateConverter;
 import com.walter.CoordinateConverter.Cartesian;
 import com.walter.CoordinateConverter.Polar;
+import com.walter.ContextMenuContext;
 
 public class ContextMenuItem {
     private static final String TAG = "ContextMenuItem";
@@ -45,14 +46,14 @@ public class ContextMenuItem {
     public final FrameLayout containerView; // Container for circle and image
     public final View blueCircle;
     public final ImageView iconImageView; // Added ImageView for the icon
-    private int circleSize = 200;  // diamètre du rond bleu
-    private int bubbleSize;
+    private int bubbleSize = 200;  // diamètre du rond bleu
     private int x = 0;
     private int y = 0;
     private ValueAnimator currentAnimator; // Track current animator to cancel if needed
     public OnMenuItemClickListener clickListener;
     public int iconID = R.drawable.bedroom;
-
+    public ContextMenuContext menuContext;
+    private boolean oppened = false;
     /**
      * Interface for click callbacks
      */
@@ -65,10 +66,10 @@ public class ContextMenuItem {
      * @param parent   le ViewGroup (FrameLayout ou autre) dans lequel on injecte le rond
      * @param nth      indice ou usage interne
      */
-    public ContextMenuItem(Context ctx, ViewGroup parent, int nth) {
+    public ContextMenuItem(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext) {
         this.ctx = ctx;
         this.nth = nth;
-
+        this.menuContext =  menuContext;
         // Create container layout that will hold both circle and icon
         containerView = new FrameLayout(ctx);
         
@@ -90,14 +91,14 @@ public class ContextMenuItem {
         
         // Center the image in the circle and scale it to fit
         FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(
-            circleSize / 2, // Image takes up half the size of the circle
-            circleSize / 2
+            bubbleSize / 2, // Image takes up half the size of the circle
+            bubbleSize / 2
         );
         imageParams.gravity = android.view.Gravity.CENTER; // Center in parent
         
         // Add views to container
         containerView.addView(blueCircle, new FrameLayout.LayoutParams(
-            circleSize, circleSize
+            bubbleSize, bubbleSize
         ));
         containerView.addView(iconImageView, imageParams);
 
@@ -114,7 +115,7 @@ public class ContextMenuItem {
 
         // LayoutParams for the container
         ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
-            circleSize, circleSize
+            bubbleSize, bubbleSize
         );
 
         // Add container to parent
@@ -158,25 +159,24 @@ public class ContextMenuItem {
      * Send a notification when the circle is clicked
      */
     public void setBubbleSize(int bubbleSize) {
-        this.bubbleSize = bubbleSize *2;
-        this.circleSize = bubbleSize*2;
+        this.bubbleSize = bubbleSize;
         
         // Update container size
         ViewGroup.LayoutParams containerParams = containerView.getLayoutParams();
-        containerParams.width = circleSize;
-        containerParams.height = circleSize;
+        containerParams.width = bubbleSize;
+        containerParams.height = bubbleSize;
         containerView.setLayoutParams(containerParams);
         
         // Update circle size
         ViewGroup.LayoutParams circleParams = blueCircle.getLayoutParams();
-        circleParams.width = circleSize;
-        circleParams.height = circleSize;
+        circleParams.width = bubbleSize;
+        circleParams.height = bubbleSize;
         blueCircle.setLayoutParams(circleParams);
         
         // Update image size (half of circle size)
         FrameLayout.LayoutParams imageParams = (FrameLayout.LayoutParams) iconImageView.getLayoutParams();
-        imageParams.width = circleSize / 2;
-        imageParams.height = circleSize / 2;
+        imageParams.width = bubbleSize / 2;
+        imageParams.height = bubbleSize / 2;
         iconImageView.setLayoutParams(imageParams);
     }
     
@@ -195,8 +195,8 @@ public class ContextMenuItem {
         int radius = Math.max(150, bubbleSize);
         
         CoordinateConverter.Polar computedRotation = new CoordinateConverter.Polar(
-            Math.abs(normalXN1To1) * 200, 
-            ((this.nth-1) * Math.abs(normalXN1To1 * (Math.PI/3))) + normalX * Math.PI
+            Math.abs(normalXN1To1) * bubbleSize *1.5, 
+            ((this.nth-1) * (normalXN1To1 * (Math.PI/3))) + Math.abs(normalX * Math.PI)
         );
         
         Cartesian c = cc.polarToCartesian(computedRotation);
@@ -213,7 +213,7 @@ public class ContextMenuItem {
         Cartesian offset = calculateTargetPosition(x, y);
         
         // Calculate the position
-        float circleRadius = circleSize / 2f; // Half of the circle diameter
+        float circleRadius = bubbleSize / 2f; // Half of the circle diameter
         int targetX = (int) (x + offset.x - circleRadius);
         int targetY = (int) (y - offset.y - circleRadius);
         
@@ -257,7 +257,7 @@ public class ContextMenuItem {
         
         // Calculate the target position
         Cartesian offset = calculateTargetPosition(bubbleX, bubbleY);
-        float circleRadius = circleSize / 2f;
+        float circleRadius = bubbleSize / 2f;
         
         // Starting position (at the bubble)
         final int startX = bubbleX - (int)circleRadius;
@@ -335,7 +335,7 @@ public class ContextMenuItem {
             return;
         }
         
-        float circleRadius = circleSize / 2f;
+        float circleRadius = bubbleSize / 2f;
         
         // Current position of the container
         final float startX = containerView.getX();

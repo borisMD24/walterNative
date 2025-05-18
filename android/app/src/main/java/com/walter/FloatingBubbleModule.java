@@ -237,7 +237,7 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 int newSizePx = (int) newSizePxFloat;
                 
                 if (underlayView != null) {
-                    underlayView.setBubbleSize(newSizeDp);
+                    underlayView.setBubbleSize(newSizePx);
                 }
                 
                 // Log the size conversion for debugging
@@ -302,47 +302,59 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
          * 
          * @param intent The intent containing bubble configuration
          */
-        private void initializeBubble(Intent intent) {
-            try {
-                // Get parameters from intent with defaults
-                int bubbleSize = (intent != null) ? 
-                        intent.getIntExtra("bubbleSize", DEFAULT_BUBBLE_SIZE) : 
-                        DEFAULT_BUBBLE_SIZE;
-                
-                // Create the bubble view from layout
-                bubbleView = LayoutInflater.from(this).inflate(R.layout.bubble_layout, null);
-                ImageView bubbleImage = bubbleView.findViewById(R.id.bubble_image);
-                
-                // Set bubble image if provided
-                if (intent != null && intent.hasExtra("bubbleIcon")) {
-                    String iconName = intent.getStringExtra("bubbleIcon");
-                    int resourceId = getResources().getIdentifier(
-                            iconName, "drawable", getPackageName());
-                    if (resourceId != 0) {
-                        bubbleImage.setImageResource(resourceId);
-                    }
-                }
-                
-                // Configure the layout parameters for the overlay window
-                params = createBubbleLayoutParams(bubbleSize);
-                
-                // Set initial position (using saved positions or defaults)
-                params.x = lastBubbleX;
-                params.y = lastBubbleY == 0 ? INITIAL_Y_OFFSET : lastBubbleY;
 
-                // Set up touch listener for drag and click events
-                bubbleView.setOnTouchListener(createBubbleTouchListener(bubbleSize));
-
-                // Add the view to the window
-                windowManager.addView(bubbleView, params);
-                
-                // Update context menu if it exists
-                
-                updateBubblePosition();
-            } catch (Exception e) {
-                Log.e(TAG, "Error initializing bubble: " + e.getMessage(), e);
+         private void initializeBubble(Intent intent) {
+    try {
+        // Get parameters from intent with defaults
+        int bubbleSize = (intent != null) ? 
+                intent.getIntExtra("bubbleSize", DEFAULT_BUBBLE_SIZE) : 
+                DEFAULT_BUBBLE_SIZE;
+        
+        // Create the bubble view from layout
+        bubbleView = LayoutInflater.from(this).inflate(R.layout.bubble_layout, null);
+        ImageView bubbleImage = bubbleView.findViewById(R.id.bubble_image);
+        
+        // Set bubble image if provided
+        if (intent != null && intent.hasExtra("bubbleIcon")) {
+            String iconName = intent.getStringExtra("bubbleIcon");
+            int resourceId = getResources().getIdentifier(
+                    iconName, "drawable", getPackageName());
+            if (resourceId != 0) {
+                bubbleImage.setImageResource(resourceId);
             }
         }
+        
+        // Configure the layout parameters for the overlay window
+        params = createBubbleLayoutParams(bubbleSize);
+        
+        // Set initial position (using saved positions or defaults)
+        params.x = lastBubbleX;
+        params.y = lastBubbleY == 0 ? INITIAL_Y_OFFSET : lastBubbleY;
+
+        // Set up touch listener for drag and click events
+        bubbleView.setOnTouchListener(createBubbleTouchListener(bubbleSize));
+
+        // Add the view to the window
+        windowManager.addView(bubbleView, params);
+        
+        // Initialize underlay position with bubble coordinates
+        if (underlayView != null) {
+            // Calculate center position of the bubble
+            int bubbleCenterX = params.x + (params.width / 2);
+            int bubbleCenterY = params.y + (params.height / 2);
+            
+            // Set the coordinates on the underlay
+            underlayView.setCoords(bubbleCenterX, bubbleCenterY);
+            underlayView.setBubbleSize(params.width);
+            Log.d(TAG, "Initial underlay coords set to: " + bubbleCenterX + ", " + bubbleCenterY);
+        }
+        
+        updateBubblePosition();
+    } catch (Exception e) {
+        Log.e(TAG, "Error initializing bubble: " + e.getMessage(), e);
+    }
+}
+
 
         /**
          * Creates the layout parameters for the bubble window

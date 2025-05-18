@@ -5,37 +5,28 @@ import com.walter.ContextMenuItem;
 
 import androidx.core.app.NotificationCompat;
 import android.widget.Toast;
+import com.walter.ContextMenuContext;
+
 public class RoomSelection extends ContextMenuItem {
-    RoomSelection(Context ctx, ViewGroup parent, int nth){
-        super(ctx, parent, nth);
+    private boolean oppened = false;
+    RoomSelection(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext){
+        super(ctx, parent, nth, menuContext);
         this.setIconID(R.drawable.kitchen);
     }
     @Override
-    public void click() {
+public void click() {
     // Animation de feedback
-    blueCircle.animate()
-        .scaleX(1.2f)
-        .scaleY(1.2f)
-        .setDuration(100)
-        .withEndAction(new Runnable() {
-            @Override
-            public void run() {
-                blueCircle.animate()
-                    .scaleX(1.0f)
-                    .scaleY(1.0f)
-                    .setDuration(100);
-            }
-        }).start();
-
-    // Envoi de notification
-
-    // Callback éventuel
-    if (clickListener != null) {
-        clickListener.onMenuItemClick(nth);
+    if(!oppened){
+        // Don't declare a local variable with the same name as lambda parameter
+        this.menuContext.oppened(this.nth, (nth) -> this.click());
+        oppened = true;
+    } else {
+        this.menuContext.close(this.nth);
+        oppened = false;
     }
-
-    // Feedback immédiat
-    Toast.makeText(ctx, "FROM ROOM", Toast.LENGTH_SHORT).show();
+    super.click();
 }
+    public void t(){
 
+    }
 }

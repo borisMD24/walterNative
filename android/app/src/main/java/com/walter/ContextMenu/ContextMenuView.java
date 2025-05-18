@@ -6,6 +6,7 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import com.walter.RoomSelection;
 import com.walter.Brightness;
+import com.walter.ContextMenuContext;
 
 public class ContextMenuView {
     public int x;
@@ -15,15 +16,15 @@ public class ContextMenuView {
     private int bubbleSize;
     private final ContextMenuItem[] items;
     private boolean isFirstShow = true;
-    
+    public ContextMenuContext menuContext;
     public ContextMenuView(Context context, ViewGroup underlay) {
         this.context = context;
-        
+        this.menuContext = new ContextMenuContext();
         // Initialize items
         this.items = new ContextMenuItem[3];
-        items[0] = new ContextMenuItem(context, underlay, 0);
-        items[1] = new Brightness(context, underlay, 1);
-        items[2] = new RoomSelection(context, underlay, 2);
+        items[0] = new ContextMenuItem(context, underlay, 0, menuContext);
+        items[1] = new Brightness(context, underlay, 1, menuContext);
+        items[2] = new RoomSelection(context, underlay, 2, menuContext);
         
         // Initialize coordinate display
         coordsText = new TextView(this.context);
@@ -129,6 +130,7 @@ public class ContextMenuView {
         for (int i = 0; i < 3; i++) {
             items[i].hide(this.x, this.y);
         }
+        menuContext.forceClose();
     }
     public void bubbleFixed(){
         
