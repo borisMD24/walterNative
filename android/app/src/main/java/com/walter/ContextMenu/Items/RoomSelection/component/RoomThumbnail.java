@@ -40,6 +40,9 @@ public class RoomThumbnail extends FrameLayout {
     private String imageUrl;
     private final ViewGroup parentContainer;
     private OnRoomSelectedListener onRoomSelectedListener;
+    private int originalX = 0;
+    // Store original position for movement with bubbleY
+    private int originalTopMargin = -1;
 
     /**
      * Interface for room selection callback
@@ -74,13 +77,25 @@ public class RoomThumbnail extends FrameLayout {
         this.imageUrl = imageUrl;
         this.parentContainer = parentContainer;
         this.radiusPx = dpToPixels(radiusDp);
-
+        this.originalTopMargin = y; // Store original Y position
+        this.originalX = x;
         setupContainer(x, y);
         this.imageView = createAndAddImageView();
         this.textView = createAndAddTextView(name);
         loadImage();
         setupDebugVisuals();
         setupClickHandling();
+    }
+
+    /**
+     * Get the original top margin position without bubbleY offset
+     * @return The original top position
+     */
+    public int getOriginalTop() {
+        return originalTopMargin;
+    }
+    public int getOriginalLeft() {
+        return originalX;
     }
 
     /**

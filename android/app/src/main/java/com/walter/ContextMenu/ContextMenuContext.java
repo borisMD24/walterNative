@@ -98,7 +98,10 @@ public class ContextMenuContext {
     }
     public void setBubbleY(int y){
         bubbleY = y;
-        normalizedBubbleY = (float) y / screenHeight;
+        float minY = bubbleSize;
+        float maxY = screenHeight - bubbleSize;
+        float clampedY = Math.max(minY, Math.min(bubbleY, maxY));
+        normalizedBubbleY = (clampedY - minY) / (maxY - minY);
     }
     public void setBubbleSize(int size){
         bubbleSize = size;

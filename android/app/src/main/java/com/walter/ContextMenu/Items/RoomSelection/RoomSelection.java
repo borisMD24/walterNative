@@ -22,7 +22,10 @@ public void click() {
     if(!oppened){
         // Don't declare a local variable with the same name as lambda parameter
         this.roomSelectionCmpnt.display();
-        this.menuContext.oppened(this.nth, (nth) -> this.roomSelectionCmpnt.undisplay());
+        this.menuContext.oppened(this.nth, (nth) -> {
+            this.roomSelectionCmpnt.undisplay();
+            this.oppened = false;
+        });
         oppened = true;
     } else {
         this.menuContext.close(this.nth);

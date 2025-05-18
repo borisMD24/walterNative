@@ -12,11 +12,14 @@ import android.view.WindowManager;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
-
+import android.widget.FrameLayout;
 import java.util.ArrayList;
 import java.util.List;
 import com.walter.GetJson;
 import com.walter.ContextMenuContext;
+import com.walter.CoordinateConverter;
+import com.walter.CoordinateConverter.Polar;
+import com.walter.CoordinateConverter.Cartesian;
 
 /**
  * Component that displays a grid of room thumbnails based on JSON data
@@ -25,7 +28,8 @@ public class RoomSelectionComponent {
     // Constants
     private static final int DEFAULT_THUMBNAIL_SIZE = 100;
     private static final int DEFAULT_SPACING = 20;
-    private static final int BACKGROUND_PADDING = 30;
+    // Increase the background padding to prevent thumbnails from overflowing
+    private static final int BACKGROUND_PADDING = 50;
     private static final int BACKGROUND_CORNER_RADIUS = 20;
     private static final int BACKGROUND_COLOR = Color.WHITE;
     
@@ -39,7 +43,6 @@ public class RoomSelectionComponent {
     private BackgroundView backgroundView;
     private boolean isDisplayed = false;
     private int marginLeft = 200;
-    private int bubbleY = 0;
     ContextMenuContext menuContext;
     // Room data
     private static final String ROOMS_JSON = GetJson.get();
@@ -66,67 +69,94 @@ public class RoomSelectionComponent {
             
         }
     }
+
+/**
+ * Background view that draws a rounded rectangle behind the thumbnails
+ */
+private class BackgroundView extends View {
+    private final Paint paint;
+    private final RectF rect;
+    private final RectF originalRect; // Store original bounds without offsets
+    
+    public BackgroundView(Context context) {
+        super(context);
+        
+        paint = new Paint();
+        paint.setColor(BACKGROUND_COLOR);
+        paint.setAntiAlias(true);
+        
+        rect = new RectF();
+        originalRect = new RectF(); // Initialize original rect
+    }
+    
+    public void setBackgroundBounds(int left, int top, int right, int bottom) {
+        // Store original bounds without any offsets
+        originalRect.set(
+            left - BACKGROUND_PADDING, 
+            top - BACKGROUND_PADDING, 
+            right + BACKGROUND_PADDING, 
+            bottom + BACKGROUND_PADDING
+        );
+        
+        // Set current rect - apply any existing offsets
+        updatePosition(menuContext.bubbleY, menuContext.normalizedBubbleX);
+    }
     
     /**
-     * Background view that draws a rounded rectangle behind the thumbnails
+     * Update the position of the background with the bubble Y offset and X offset
+     * @param bubbleY The Y offset to apply
+     * @param normalizedBubbleX The normalized X position (0-1) to calculate X offset
      */
-    private class BackgroundView extends View {
-        private final Paint paint;
-        private final RectF rect;
-        
-        public BackgroundView(Context context) {
-            super(context);
-            
-            paint = new Paint();
-            paint.setColor(BACKGROUND_COLOR);
-            paint.setAntiAlias(true);
-            
-            rect = new RectF();
-        }
-        
-        public void setBackgroundBounds(int left, int top, int right, int bottom) {
-            rect.set(
-                left - BACKGROUND_PADDING, 
-                top - BACKGROUND_PADDING, 
-                right + BACKGROUND_PADDING, 
-                bottom + BACKGROUND_PADDING
-            );
-            invalidate();
-        }
-        
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            canvas.drawRoundRect(rect, BACKGROUND_CORNER_RADIUS, BACKGROUND_CORNER_RADIUS, paint);
-        }
+    public void updatePosition(int bubbleY, float normalizedBubbleX) {
+        // Calculate X offset based on normalizedBubbleX
+        int xOffset = -(int)(normalizedBubbleX * marginLeft);    
+       
+        rect.set(
+            originalRect.left + xOffset,
+            originalRect.top + bubbleY + getBubbleDodgeOffset(),
+            originalRect.right + xOffset,
+            originalRect.bottom + bubbleY + getBubbleDodgeOffset()
+        );
+        invalidate(); // Request redraw
     }
+    
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        canvas.drawRoundRect(rect, BACKGROUND_CORNER_RADIUS, BACKGROUND_CORNER_RADIUS, paint);
+    }
+}
 
+    
     /**
      * Constructor for RoomSelectionComponent
      * @param context Android context
      * @param container ViewGroup to add thumbnails to
      */
-public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
-    this.context = context;
-    this.container = container;
-    this.screenWidth = getScreenWidth();
-    this.menuContext = menuContext;
-    this.menuContext.onBubbleResize(()->{
-        this.onBubbleResize();
-    });
-    // Création de la BackgroundView
-    this.backgroundView = new BackgroundView(context);
+    public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
+        this.context = context;
+        this.container = container;
+        this.screenWidth = getScreenWidth();
+        this.menuContext = menuContext;
+        this.menuContext.onBubbleResize(()->{
+            this.onBubbleResize();
+        });
+        this.menuContext.onMove(()->{
+            this.onMove();
+        });
+        // Création de la BackgroundView
+        this.backgroundView = new BackgroundView(context);
 
-    // LayoutParams en match_parent pour l’affichage complet du fond
-    ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.MATCH_PARENT
-    );
-    // Ajout au container en index 0 pour être derrière les miniatures
-    container.addView(backgroundView, 0, lp);
+        // LayoutParams en match_parent pour l'affichage complet du fond
+        ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        );
+        // Ajout au container en index 0 pour être derrière les miniatures
+        container.addView(backgroundView, 0, lp);
 
-    initializeRooms();
-}
+        initializeRooms();
+    }
 
     /**
      * Parse room data from JSON and create thumbnails
@@ -179,81 +209,90 @@ public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuC
      * Create and display thumbnails in a grid layout
      * @param rooms List of Room objects
      */
-private void displayRoomThumbnails(List<Room> rooms) {
-    // Calculate layout parameters
-    int thumbnailSize = thumbnailRadius * 2;
-    int horizontalSpacing = DEFAULT_SPACING;
-    int verticalSpacing = DEFAULT_SPACING;
-    
-    // Calculate available width considering marginLeft
-    int availableWidth = screenWidth - marginLeft; // Subtract marginLeft from screenWidth
-    
-    // Calculate how many thumbnails can fit in a row
-    int thumbnailsPerRow = Math.max(1, (availableWidth + horizontalSpacing) / 
-                                    (thumbnailSize + horizontalSpacing));
-    
-    // Calculate horizontal offset to center the grid within the available width after marginLeft
-    int totalRowWidth = (thumbnailsPerRow * thumbnailSize) + 
-                        ((thumbnailsPerRow - 1) * horizontalSpacing);
-    int startX = marginLeft + (availableWidth - totalRowWidth) / 2; // Apply marginLeft and center
-    
-    // Variables to track the bounds of all thumbnails (for the background)
-    int minX = Integer.MAX_VALUE;
-    int minY = Integer.MAX_VALUE;
-    int maxX = Integer.MIN_VALUE;
-    int maxY = Integer.MIN_VALUE;
-    
-    // Create thumbnails
-    for (int i = 0; i < rooms.size(); i++) {
-        final Room room = rooms.get(i);
+    private void displayRoomThumbnails(List<Room> rooms) {
+        // Calculate layout parameters - adjusted for actual thumbnail size
+        int thumbnailSize = thumbnailRadius * 2;
+        int horizontalSpacing = DEFAULT_SPACING;
+        int verticalSpacing = DEFAULT_SPACING;
         
-        // Calculate grid position
-        int row = i / thumbnailsPerRow;
-        int col = i % thumbnailsPerRow;
+        // Calculate available width considering marginLeft
+        int availableWidth = screenWidth - marginLeft;
         
-        // Calculate x and y positions with proper spacing
-        int x = startX + col * (thumbnailSize + horizontalSpacing);
-        int y = verticalSpacing + row * (thumbnailSize + verticalSpacing);
+        // Calculate how many thumbnails can fit in a row
+        int thumbnailsPerRow = Math.max(1, (availableWidth + horizontalSpacing) / 
+                                      (thumbnailSize + horizontalSpacing));
         
-        // Update bounds for background
-        minX = Math.min(minX, x - thumbnailRadius);
-        minY = Math.min(minY, y - thumbnailRadius);
-        maxX = Math.max(maxX, x + thumbnailRadius);
-        maxY = Math.max(maxY, y + thumbnailRadius);
+        // Calculate horizontal offset to center the grid within the available width after marginLeft
+        int totalRowWidth = (thumbnailsPerRow * thumbnailSize) + 
+                          ((thumbnailsPerRow - 1) * horizontalSpacing);
+        int startX = marginLeft + (availableWidth - totalRowWidth) / 2;
         
-        // Create thumbnail
-        RoomThumbnail thumbnail = new RoomThumbnail(
-            context,
-            x,
-            y,
-            room.name,
-            thumbnailRadius/2,
-            room.imageUrl,
-            container
-        );
+        // Variables to track the bounds of all thumbnails (for the background)
+        int minX = Integer.MAX_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxY = Integer.MIN_VALUE;
         
-        // Set click listener
-        thumbnail.setOnRoomSelectedListener(roomName -> {
-            if (roomSelectedListener != null) {
-                roomSelectedListener.onRoomSelected(roomName, room.id);
-            }
-        });
+        // Create thumbnails
+        for (int i = 0; i < rooms.size(); i++) {
+            final Room room = rooms.get(i);
+            
+            // Calculate grid position
+            int row = i / thumbnailsPerRow;
+            int col = i % thumbnailsPerRow;
+            
+            // Calculate x and y positions with proper spacing
+            int x = startX + col * (thumbnailSize + horizontalSpacing);
+            int y = verticalSpacing + row * (thumbnailSize + verticalSpacing);
+            
+            // Calculate thumbnail bounds correctly accounting for full thumbnail size
+            // The x,y coordinates represent the top-left corner of the thumbnail
+            minX = Math.min(minX, x);
+            minY = Math.min(minY, y);
+            maxX = Math.max(maxX, x + thumbnailSize);
+            maxY = Math.max(maxY, y + thumbnailSize);
+            
+            // Create thumbnail at center position
+            // RoomThumbnail expects center coordinates, so we need to adjust x and y
+            int centerX = x + thumbnailRadius;
+            int centerY = y + thumbnailRadius;
+            
+            RoomThumbnail thumbnail = new RoomThumbnail(
+                context,
+                centerX - thumbnailRadius, // Adjust back to top-left for FrameLayout
+                centerY - thumbnailRadius, // Adjust back to top-left for FrameLayout
+                room.name,
+                thumbnailRadius / 2,
+                room.imageUrl,
+                container
+            );
+            
+            // Set click listener
+            thumbnail.setOnRoomSelectedListener(roomName -> {
+                if (roomSelectedListener != null) {
+                    roomSelectedListener.onRoomSelected(roomName, room.id);
+                }
+            });
+            
+            thumbnails.add(thumbnail);
+        }
         
-        thumbnails.add(thumbnail);
+        // Adjust background bounds for single thumbnail case
+        if (rooms.size() <= 1) {
+            int expansion = thumbnailSize;
+            minX -= expansion / 2;
+            minY -= expansion / 2;
+            maxX += expansion / 2;
+            maxY += expansion / 2;
+        }
+        
+        // Calculate extra space needed for the text labels under thumbnails
+        int extraTextSpace = thumbnailRadius; // Approximate height of text labels
+        maxY += extraTextSpace;
+        
+        // Set background bounds
+        backgroundView.setBackgroundBounds(minX, minY, maxX, maxY);
     }
-    
-    // Adjust background bounds for single thumbnail case
-    if (rooms.size() <= 1) {
-        int expansion = thumbnailSize;
-        minX -= expansion;
-        minY -= expansion;
-        maxX += expansion;
-        maxY += expansion;
-    }
-    
-    backgroundView.setBackgroundBounds(minX, minY, maxX, maxY);
-}
-     
 
     /**
      * Get the screen width in pixels
@@ -299,51 +338,89 @@ private void displayRoomThumbnails(List<Room> rooms) {
             ((ViewGroup) backgroundView.getParent()).removeView(backgroundView);
         }
     }
-public void display() {
-    if (!isDisplayed) {
-        if (backgroundView.getParent() == null) {
-            ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            );
-            container.addView(backgroundView, 0, lp);
-        }
-        
-        // Ajoute les miniatures si elles ne sont pas là
-        if (thumbnails.isEmpty()) {
-            displayRoomThumbnails(rooms);
-        } else {
-            for (RoomThumbnail thumbnail : thumbnails) {
-                if (thumbnail.getParent() == null) {
-                    container.addView(thumbnail);
+    
+    public void display() {
+        if (!isDisplayed) {
+            if (backgroundView.getParent() == null) {
+                ViewGroup.LayoutParams lp = new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                );
+                container.addView(backgroundView, 0, lp);
+            }
+            
+            // Display thumbnails if they aren't already visible
+            if (thumbnails.isEmpty()) {
+                displayRoomThumbnails(rooms);
+            } else {
+                for (RoomThumbnail thumbnail : thumbnails) {
+                    if (thumbnail.getParent() == null) {
+                        container.addView(thumbnail);
+                    }
                 }
             }
+            
+            isDisplayed = true;
         }
-        
-        isDisplayed = true;
     }
-}
 
-public void undisplay() {
-    if (isDisplayed) {
-        // Supprime les miniatures
-        for (RoomThumbnail thumbnail : thumbnails) {
-            View v = thumbnail;
-            if (v.getParent() != null) {
-                ((ViewGroup) v.getParent()).removeView(v);
+    public void undisplay() {
+        if (isDisplayed) {
+            // Remove thumbnails
+            for (RoomThumbnail thumbnail : thumbnails) {
+                View v = thumbnail;
+                if (v.getParent() != null) {
+                    ((ViewGroup) v.getParent()).removeView(v);
+                }
             }
+            
+            // Remove background view
+            if (backgroundView.getParent() != null) {
+                ((ViewGroup) backgroundView.getParent()).removeView(backgroundView);
+            }
+            
+            isDisplayed = false;
         }
-        
-        // Supprime le backgroundView
-        if (backgroundView.getParent() != null) {
-            ((ViewGroup) backgroundView.getParent()).removeView(backgroundView);
-        }
-        
-        isDisplayed = false;
     }
-}
+    
     public void onBubbleResize(){
         thumbnailRadius = (int)(menuContext.bubbleSize/4);
         marginLeft = 3 * menuContext.bubbleSize;
+        
+        // Re-layout when bubble size changes
+        if (isDisplayed) {
+            clearThumbnails();
+            displayRoomThumbnails(rooms);
+        }
     }
+
+/**
+ * Handle bubble movement - update positions based on menuContext.bubbleY and menuContext.normalizedBubbleX
+ */
+private void onMove() {
+    // Calculate X offset based on normalizedBubbleX
+    int xOffset = -(int)(menuContext.normalizedBubbleX * marginLeft);
+    int bubbleDodgeOffset = (int)((Math.abs(menuContext.normalizedBubbleX*2 - 1) - 1) * menuContext.bubbleSize);
+
+    // Move all thumbnails based on the current bubbleY offset and normalizedBubbleX
+    for (RoomThumbnail thumbnail : thumbnails) {
+        // Get the layout parameters for the thumbnail
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) thumbnail.getLayoutParams();
+        if (params != null) {
+            // Set the new position using the original position plus the offsets
+            params.topMargin = thumbnail.getOriginalTop() + menuContext.bubbleY + getBubbleDodgeOffset();
+            params.leftMargin = thumbnail.getOriginalLeft() + xOffset;
+            thumbnail.setLayoutParams(params);
+        }
+    }
+    
+    // Move the background with the same offsets
+    if (backgroundView != null) {
+        backgroundView.updatePosition(menuContext.bubbleY, menuContext.normalizedBubbleX);
+    }
+}
+private int getBubbleDodgeOffset(){
+    float i = (menuContext.normalizedBubbleX*2)-1;
+    return (int)((1f-(Math.pow(i, 4)))*1.2*menuContext.bubbleSize);
+}
 }
