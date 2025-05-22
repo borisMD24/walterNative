@@ -2,338 +2,172 @@ package com.walter;
 
 import android.content.Context;
 import android.graphics.Color;
-import android.graphics.drawable.Drawable;
-import android.util.Log;
+import android.graphics.Typeface;
+import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.ViewGroup;
-import android.widget.FrameLayout;
 import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
-import androidx.annotation.Nullable;
-
 import com.bumptech.glide.Glide;
-import com.bumptech.glide.load.DataSource;
-import com.bumptech.glide.load.engine.GlideException;
 import com.bumptech.glide.load.resource.bitmap.CircleCrop;
-import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
-import com.bumptech.glide.request.target.Target;
+import com.google.android.flexbox.FlexboxLayout;
 
-/**
- * Custom view that displays a circular room thumbnail with text label
- */
-public class RoomThumbnail extends FrameLayout {
-    // Constants
-    private static final boolean DEBUG_LAYOUT = false;
-    private static final String TAG = "RoomThumbnail";
-    private static final int TEXT_MARGIN_BOTTOM_DP = 8;
-    private static final int DEFAULT_PADDING_DP = 4;
-    
-    // Views
+public class RoomThumbnail extends LinearLayout {
     private final ImageView imageView;
-    private final TextView textView;
-    
-    // Properties
-    private int radiusDp;
+    private final TextView nameLabel;
+    private final int id;
     private int radiusPx;
     private String imageUrl;
-    private final ViewGroup parentContainer;
-    private OnRoomSelectedListener onRoomSelectedListener;
-    private int originalX = 0;
-    // Store original position for movement with bubbleY
-    private int originalTopMargin = -1;
+    public String name;
 
-    /**
-     * Interface for room selection callback
-     */
-    public interface OnRoomSelectedListener {
-        void onRoomSelected(String roomName);
-    }
-
-    /**
-     * Creates a room thumbnail with an image and text
-     *
-     * @param context Android context
-     * @param x X position in parent
-     * @param y Y position in parent
-     * @param name Text to display under the thumbnail
-     * @param radiusDp Radius in dp
-     * @param imageUrl URL of the image to load
-     * @param parentContainer Parent ViewGroup
-     */
     public RoomThumbnail(Context context,
-                        int x,
-                        int y,
-                        String name,
-                        int radiusDp,
-                        String imageUrl,
-                        ViewGroup parentContainer) {
+                         int id,
+                         int radiusDp,
+                         String imageUrl,
+                         ViewGroup parentContainer,
+                         FlexboxLayout.LayoutParams layoutParams) {
         super(context);
-        
-        validateInputs(radiusDp, parentContainer);
-        
-        this.radiusDp = radiusDp;
+        validateInputs(id, radiusDp, parentContainer);
+        this.id = id;
+        this.radiusPx = dpToPx(radiusDp, context);
         this.imageUrl = imageUrl;
-        this.parentContainer = parentContainer;
-        this.radiusPx = dpToPixels(radiusDp);
-        this.originalTopMargin = y; // Store original Y position
-        this.originalX = x;
-        setupContainer(x, y);
-        this.imageView = createAndAddImageView();
-        this.textView = createAndAddTextView(name);
-        loadImage();
-        setupDebugVisuals();
-        setupClickHandling();
-    }
 
-    /**
-     * Get the original top margin position without bubbleY offset
-     * @return The original top position
-     */
-    public int getOriginalTop() {
-        return originalTopMargin;
-    }
-    public int getOriginalLeft() {
-        return originalX;
-    }
-
-    /**
-     * Updates the thumbnail radius and refreshes the view
-     * 
-     * @param radiusDp New radius in dp
-     */
-    public void setRadius(int radiusDp) {
-        if (radiusDp <= 0) {
-            throw new IllegalArgumentException("Radius must be positive");
-        }
-        
-        this.radiusDp = radiusDp;
-        this.radiusPx = dpToPixels(radiusDp);
-        
-        // Update layout dimensions
-        ViewGroup.LayoutParams params = getLayoutParams();
-        params.width = radiusPx * 2;
-        params.height = radiusPx * 2;
-        setLayoutParams(params);
-        
-        // Reload image with new dimensions
+        setupContainer(parentContainer, layoutParams);
+        this.imageView = createImageView();
+        this.nameLabel = createNameLabel();
         loadImage();
     }
 
-    /**
-     * Set listener for room selection events
-     * 
-     * @param listener The listener to call when this room is selected
-     */
-    public void setOnRoomSelectedListener(OnRoomSelectedListener listener) {
-        this.onRoomSelectedListener = listener;
+    public RoomThumbnail(Context context,
+                         int id,
+                         int radiusDp,
+                         String imageUrl,
+                         ViewGroup parentContainer,
+                         String name) {
+        this(context, id, radiusDp, imageUrl, parentContainer,
+            new FlexboxLayout.LayoutParams(
+                dpToPx(radiusDp, context) * 2,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ));
+        this.name = name;
+        updateNameLabel();
     }
 
-    /**
-     * Get the name of the room
-     * 
-     * @return Room name as displayed in the label
-     */
-    public String getRoomName() {
-        return textView.getText().toString();
-    }
-
-    /**
-     * Validate constructor parameters
-     */
-    private void validateInputs(int radiusDp, ViewGroup parentContainer) {
+    private void validateInputs(int id, int radiusDp, ViewGroup parent) {
         if (radiusDp <= 0) throw new IllegalArgumentException("Radius must be positive");
-        if (parentContainer == null) throw new IllegalArgumentException("Parent cannot be null");
+        if (parent == null) throw new IllegalArgumentException("Parent cannot be null");
     }
 
-    /**
-     * Convert dp to pixels
-     */
-    private int dpToPixels(int dp) {
-        final float density = getContext().getResources().getDisplayMetrics().density;
-        return (int) (dp * density);
-    }
-
-    /**
-     * Setup the container layout
-     */
-    private void setupContainer(int x, int y) {
-        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-            radiusPx * 2,
-            radiusPx * 2
-        );
+    private void setupContainer(ViewGroup parent, FlexboxLayout.LayoutParams params) {
+        // Set up LinearLayout with vertical orientation
+        setOrientation(LinearLayout.VERTICAL);
+        setGravity(Gravity.CENTER_HORIZONTAL);
         
-        // Calculate margins to position the thumbnail correctly
-        params.setMargins(
-            x,
-            y,
-            0,
-            0
-        );
-
+        // Adjust layout params for the new structure
+        params.width = radiusPx * 2;
+        params.height = ViewGroup.LayoutParams.WRAP_CONTENT;
         setLayoutParams(params);
-        parentContainer.addView(this);
-        
-        // Verify thumbnail is positioned correctly within parent bounds
-        if (DEBUG_LAYOUT) {
-            verifyPositioning();
-        }
+        parent.addView(this);
     }
 
-    /**
-     * Create and add the circular image view
-     */
-    private ImageView createAndAddImageView() {
+    private ImageView createImageView() {
         ImageView iv = new ImageView(getContext());
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
         
-        LayoutParams params = new LayoutParams(
-            LayoutParams.MATCH_PARENT, 
-            LayoutParams.MATCH_PARENT
+        // Create layout params for the circular image
+        LinearLayout.LayoutParams imageParams = new LinearLayout.LayoutParams(
+            radiusPx * 2, 
+            radiusPx * 2
         );
+        imageParams.gravity = Gravity.CENTER_HORIZONTAL;
         
-        addView(iv, params);
+        addView(iv, imageParams);
         return iv;
     }
 
-    /**
-     * Create and add the text label view
-     */
-    private TextView createAndAddTextView(String name) {
-        TextView tv = new TextView(getContext());
-        tv.setText(name);
-        tv.setAllCaps(true);
-        tv.setTextColor(Color.WHITE);
-        tv.setShadowLayer(2f, 1f, 1f, Color.BLACK);
+    private TextView createNameLabel() {
+        TextView textView = new TextView(getContext());
+        textView.setGravity(Gravity.CENTER);
+        textView.setTextColor(Color.BLACK);
+        textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
+        textView.setTypeface(Typeface.DEFAULT);
+        textView.setSingleLine(true);
+        textView.setEllipsize(TextUtils.TruncateAt.END);
         
-        LayoutParams params = new LayoutParams(
-            LayoutParams.WRAP_CONTENT,
-            LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL
+        // Add some top margin to separate from the image
+        LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
         );
-        params.bottomMargin = dpToPixels(TEXT_MARGIN_BOTTOM_DP);
+        textParams.topMargin = dpToPx(4); // 4dp margin
+        textParams.gravity = Gravity.CENTER_HORIZONTAL;
         
-        addView(tv, params);
-        return tv;
+        addView(textView, textParams);
+        return textView;
     }
 
-    /**
-     * Load the image using Glide
-     */
+    public void updateNameLabel() {
+        if (nameLabel != null) {
+            if (name != null && !name.trim().isEmpty()) {
+                nameLabel.setText(name);
+                nameLabel.setVisibility(VISIBLE);
+            } else {
+                nameLabel.setVisibility(GONE);
+            }
+        }
+    }
+
     private void loadImage() {
-        // Clear any previous image loading requests to prevent overlap
-        Glide.with(getContext()).clear(imageView);
-        
         Glide.with(getContext())
-             .load(imageUrl)
-             .apply(createRequestOptions())
-             // Remove crossfade to prevent overlap during transition
-             // .transition(DrawableTransitionOptions.withCrossFade(CROSSFADE_DURATION_MS))
-             .addListener(new ImageLoadListener())
-             .into(imageView);
+            .load(imageUrl)
+            .apply(new RequestOptions()
+                .override(radiusPx * 2, radiusPx * 2)
+                .transform(new CircleCrop())
+                .placeholder(R.drawable.kitchen)
+                .error(R.drawable.bedroom))
+            .into(imageView);
     }
 
-    /**
-     * Create request options for Glide
-     */
-    private RequestOptions createRequestOptions() {
-        return new RequestOptions()
-            .override(radiusPx * 2, radiusPx * 2)
-            .transform(new CircleCrop())
-            .placeholder(R.drawable.kitchen)
-            .error(R.drawable.bedroom);
+    // Method to update the room name after creation
+    public void setName(String name) {
+        this.name = name;
+        updateNameLabel();
     }
 
-    /**
-     * Listener for Glide image loading
-     */
-    private class ImageLoadListener implements RequestListener<Drawable> {
-        @Override
-        public boolean onLoadFailed(@Nullable GlideException e, Object model,
-                                   Target<Drawable> target, boolean isFirstResource) {
-            Log.e(TAG, "Image load failed for " + imageUrl, e);
-            return false; // Let Glide handle the error drawable
-        }
+    public String getName() {
+        return name;
+    }
 
-        @Override
-        public boolean onResourceReady(Drawable resource, Object model,
-                                      Target<Drawable> target, DataSource dataSource,
-                                      boolean isFirstResource) {
-            // Ensure placeholder is completely replaced
-            imageView.setImageDrawable(resource);
-            
-            if (DEBUG_LAYOUT) {
-                imageView.setBackgroundColor(Color.TRANSPARENT);
-            }
-            return true; // We've handled setting the resource
+    // Method to customize label appearance
+    public void setLabelTextSize(float textSizeSp) {
+        if (nameLabel != null) {
+            nameLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, textSizeSp);
         }
     }
 
-    /**
-     * Verify the thumbnail is positioned correctly
-     */
-    private void verifyPositioning() {
-        parentContainer.post(() -> {
-            LayoutParams params = (LayoutParams) getLayoutParams();
-            int parentWidth = parentContainer.getWidth();
-            int parentHeight = parentContainer.getHeight();
-            
-            boolean isOutOfBounds = 
-                params.leftMargin < 0 || 
-                params.topMargin < 0 ||
-                (params.leftMargin + getWidth()) > parentWidth ||
-                (params.topMargin + getHeight()) > parentHeight;
-                
-            if (isOutOfBounds) {
-                Log.w(TAG, String.format(
-                    "Thumbnail positioning issue: thumbnail at (%d,%d) with size %dx%d in parent of size %dx%d",
-                    params.leftMargin, params.topMargin,
-                    getWidth(), getHeight(),
-                    parentWidth, parentHeight
-                ));
-            }
-        });
-    }
-
-    /**
-     * Setup debug visuals for layout inspection
-     */
-    private void setupDebugVisuals() {
-        if (DEBUG_LAYOUT) {
-            setBackgroundColor(Color.argb(50, 255, 0, 0));
-            imageView.setBackgroundColor(Color.argb(50, 0, 255, 0));
-            setPadding(
-                dpToPixels(DEFAULT_PADDING_DP),
-                dpToPixels(DEFAULT_PADDING_DP),
-                dpToPixels(DEFAULT_PADDING_DP),
-                dpToPixels(DEFAULT_PADDING_DP)
-            );
+    public void setLabelTextColor(int color) {
+        if (nameLabel != null) {
+            nameLabel.setTextColor(color);
         }
     }
 
-    /**
-     * Setup click handling for the thumbnail
-     */
-    private void setupClickHandling() {
-        setOnClickListener(v -> {
-            String roomName = textView.getText().toString();
-            Log.d(TAG, "Thumbnail clicked: " + roomName);
-            
-            if (onRoomSelectedListener != null) {
-                onRoomSelectedListener.onRoomSelected(roomName);
-            }
-        });
+    // Méthode d'instance (facultative si utilisée ailleurs dans la classe)
+    private int dpToPx(int dp) {
+        return dpToPx(dp, getContext());
     }
 
-    /**
-     * Cleans up resources and removes view from parent
-     */
+    // Version statique utilisée dans le constructeur
+    private static int dpToPx(int dp, Context context) {
+        return Math.round(dp * context.getResources().getDisplayMetrics().density);
+    }
+
     public void destroy() {
         ViewGroup parent = (ViewGroup) getParent();
-        if (parent != null) {
-            parent.removeView(this);
-        }
+        if (parent != null) parent.removeView(this);
         Glide.with(getContext()).clear(imageView);
     }
 }

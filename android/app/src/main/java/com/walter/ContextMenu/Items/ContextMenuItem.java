@@ -32,6 +32,7 @@ import com.walter.CoordinateConverter;
 import com.walter.CoordinateConverter.Cartesian;
 import com.walter.CoordinateConverter.Polar;
 import com.walter.ContextMenuContext;
+import java.util.function.BiConsumer;
 
 public class ContextMenuItem {
     private static final String TAG = "ContextMenuItem";
@@ -49,6 +50,7 @@ public class ContextMenuItem {
     public int iconID = R.drawable.bedroom;
     public ContextMenuContext menuContext;
     private boolean oppened = false;
+    private BiConsumer<Integer, Integer> moveCallback = null;
 
     public interface OnMenuItemClickListener {
         void onMenuItemClick(int index);
@@ -158,6 +160,9 @@ public class ContextMenuItem {
         
         containerView.setX(targetX);
         containerView.setY(targetY);
+        if (moveCallback != null) {
+            moveCallback.accept(targetX, targetY);
+        }
     }
     
     public void click() {
@@ -285,6 +290,8 @@ public class ContextMenuItem {
             ((ViewGroup) containerView.getParent()).removeView(containerView);
         }
     }
-    
+    public void setMoveCallback(BiConsumer<Integer, Integer> cb){
+        moveCallback = cb;
+    }
     public void bubbleFixed() {}
 }

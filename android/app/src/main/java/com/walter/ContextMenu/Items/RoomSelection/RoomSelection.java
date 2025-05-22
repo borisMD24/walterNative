@@ -14,6 +14,12 @@ public class RoomSelection extends ContextMenuItem {
     RoomSelection(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext){
         super(ctx, parent, nth, menuContext);
         roomSelectionCmpnt = new RoomSelectionComponent(ctx, parent, menuContext);
+        this.setMoveCallback((x, y) -> {
+            this.roomSelectionCmpnt.onIconMove(
+                x + menuContext.bubbleSize / 2,
+                y + menuContext.bubbleSize / 2
+            );
+        });
         this.setIconID(R.drawable.kitchen);
     }
     @Override
