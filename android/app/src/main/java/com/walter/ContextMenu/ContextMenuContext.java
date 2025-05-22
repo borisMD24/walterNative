@@ -21,6 +21,8 @@ public class ContextMenuContext {
     protected int screenHeight;
     protected int screenWidth;
     protected int bubbleSize = 200;
+    protected int roomSelectionX;
+    protected int roomSelectionY;
     private Context ctx;
     ContextMenuContext(Context ctx) {
         this.ctx = ctx;
@@ -121,5 +123,9 @@ public class ContextMenuContext {
     }
     public void setBubbleFixed(){
         onBubbleFixedCallbacks.forEach(Runnable::run);
+    }
+    public void setRoomSelectionCoords(int x, int y){
+        this.roomSelectionX = x;
+        this.roomSelectionY = y;
     }
 }

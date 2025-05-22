@@ -10,7 +10,7 @@ import androidx.annotation.RequiresApi;
 
 /**
  * ClipPathManager handles clipping operations for views using various shapes and patterns.
- * Provides methods to apply different clip paths like rounded rectangles, circles, 
+ * Provides methods to apply different clip paths like rounded rectangles, circles,
  * custom paths, and more complex shapes.
  */
 public class ClipPathManager {
@@ -39,6 +39,14 @@ public class ClipPathManager {
     }
     
     /**
+     * Sets custom bounds for clipping (left, top, right, bottom)
+     */
+    public void setCoords(float left, float top, float right, float bottom) {
+        bounds.set(left, top, right, bottom);
+        updateClipping();
+    }
+    
+    /**
      * Applies a rounded rectangle clip path to the view
      * @param cornerRadius Radius for all corners in pixels
      */
@@ -51,12 +59,14 @@ public class ClipPathManager {
                 @Override
                 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
                 public void getOutline(View view, Outline outline) {
-                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), cornerRadius);
+                    RectF rect = getEffectiveBounds(view);
+                    outline.setRoundRect((int)rect.left, (int)rect.top,
+                                         (int)rect.right, (int)rect.bottom,
+                                         cornerRadius);
                 }
             });
             targetView.setClipToOutline(true);
         } else {
-            // Fallback for older versions - use custom clipping
             applyCustomClipping();
         }
     }
@@ -73,12 +83,15 @@ public class ClipPathManager {
                 @Override
                 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
                 public void getOutline(View view, Outline outline) {
-                    int size = Math.min(view.getWidth(), view.getHeight());
-                    int centerX = view.getWidth() / 2;
-                    int centerY = view.getHeight() / 2;
-                    int radius = size / 2;
-                    outline.setOval(centerX - radius, centerY - radius, 
-                                  centerX + radius, centerY + radius);
+                // Utilisation stricte des bounds prédéfinis (carré de côté 2×currentRadius)
+                RectF rect = getEffectiveBounds(view);
+                // On trace un ovale qui sera un cercle parfait dans le carré (left, top, right, bottom)
+                outline.setOval(
+                    (int) rect.left,
+                    (int) rect.top,
+                    (int) rect.right,
+                    (int) rect.bottom
+                );
                 }
             });
             targetView.setClipToOutline(true);
@@ -99,7 +112,9 @@ public class ClipPathManager {
                 @Override
                 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
                 public void getOutline(View view, Outline outline) {
-                    outline.setOval(0, 0, view.getWidth(), view.getHeight());
+                    RectF rect = getEffectiveBounds(view);
+                    outline.setOval((int)rect.left, (int)rect.top,
+                                    (int)rect.right, (int)rect.bottom);
                 }
             });
             targetView.setClipToOutline(true);
@@ -173,7 +188,6 @@ public class ClipPathManager {
             targetView.setOutlineProvider(ViewOutlineProvider.BACKGROUND);
         }
         
-        // Remove custom clipping
         targetView.setClipToOutline(false);
         targetView.invalidate();
     }
@@ -184,7 +198,6 @@ public class ClipPathManager {
      */
     public void updateClipping() {
         if (currentClipType != ClipType.NONE) {
-            // Reapply current clipping type
             switch (currentClipType) {
                 case ROUNDED_RECTANGLE:
                     applyRoundedRectangle(cornerRadius);
@@ -220,75 +233,78 @@ public class ClipPathManager {
     }
     
     /**
+     * Gets the effective bounds: uses custom bounds if set, otherwise full view
+     */
+    private RectF getEffectiveBounds(View view) {
+        if (bounds.width() > 0 && bounds.height() > 0) {
+            return bounds;
+        }
+        return new RectF(0, 0, view.getWidth(), view.getHeight());
+    }
+    
+    /**
      * Creates a path for complex shapes that can't be handled by Outline
      */
     private Path createPathForCurrentType() {
         Path path = new Path();
-        float width = targetView.getWidth();
-        float height = targetView.getHeight();
+        RectF rect = getEffectiveBounds(targetView);
+        float width = rect.width();
+        float height = rect.height();
+        float left = rect.left;
+        float top = rect.top;
         
         switch (currentClipType) {
             case ROUNDED_TOP_CORNERS:
-                path.addRoundRect(new RectF(0, 0, width, height), 
+                path.addRoundRect(new RectF(left, top, left+width, top+height), 
                     new float[]{cornerRadius, cornerRadius, cornerRadius, cornerRadius, 0, 0, 0, 0}, 
                     Path.Direction.CW);
                 break;
-                
             case ROUNDED_BOTTOM_CORNERS:
-                path.addRoundRect(new RectF(0, 0, width, height), 
+                path.addRoundRect(new RectF(left, top, left+width, top+height), 
                     new float[]{0, 0, 0, 0, cornerRadius, cornerRadius, cornerRadius, cornerRadius}, 
                     Path.Direction.CW);
                 break;
-                
             case HEXAGON:
-                float centerX = width / 2f;
-                float centerY = height / 2f;
+                float centerX = left + width/2f;
+                float centerY = top + height/2f;
                 float radius = Math.min(width, height) / 2f * 0.8f;
-                
                 for (int i = 0; i < 6; i++) {
                     float angle = (float) (i * Math.PI / 3);
                     float x = centerX + radius * (float) Math.cos(angle);
                     float y = centerY + radius * (float) Math.sin(angle);
-                    if (i == 0) {
-                        path.moveTo(x, y);
-                    } else {
-                        path.lineTo(x, y);
-                    }
+                    if (i == 0) path.moveTo(x, y);
+                    else path.lineTo(x, y);
                 }
                 path.close();
                 break;
-                
             case TRIANGLE:
-                path.moveTo(width / 2f, 0);
-                path.lineTo(0, height);
-                path.lineTo(width, height);
+                path.moveTo(left+width/2f, top);
+                path.lineTo(left, top+height);
+                path.lineTo(left+width, top+height);
                 path.close();
                 break;
-                
             case DIAMOND:
-                path.moveTo(width / 2f, 0);
-                path.lineTo(width, height / 2f);
-                path.lineTo(width / 2f, height);
-                path.lineTo(0, height / 2f);
+                path.moveTo(left+width/2f, top);
+                path.lineTo(left+width, top+height/2f);
+                path.lineTo(left+width/2f, top+height);
+                path.lineTo(left, top+height/2f);
                 path.close();
                 break;
-                
             case CIRCLE:
                 float circleRadius = Math.min(width, height) / 2f;
-                path.addCircle(width / 2f, height / 2f, circleRadius, Path.Direction.CW);
+                path.addCircle(left+width/2f, top+height/2f, circleRadius, Path.Direction.CW);
                 break;
-                
             case OVAL:
-                path.addOval(new RectF(0, 0, width, height), Path.Direction.CW);
+                path.addOval(new RectF(left, top, left+width, top+height), Path.Direction.CW);
                 break;
-                
             case CUSTOM_PATH:
                 if (customPath != null) {
                     path.set(customPath);
                 }
                 break;
+            default:
+                break;
         }
-        
         return path;
     }
     
@@ -302,8 +318,6 @@ public class ClipPathManager {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
                     targetView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
                 }
-                
-                // Create custom drawable with clipping
                 ClipDrawable clipDrawable = new ClipDrawable(createPathForCurrentType());
                 targetView.setBackground(clipDrawable);
                 targetView.invalidate();
@@ -342,11 +356,9 @@ public class ClipPathManager {
     public ClipType getCurrentClipType() {
         return currentClipType;
     }
-    
     public float getCornerRadius() {
         return cornerRadius;
     }
-    
     public Path getCustomPath() {
         return customPath != null ? new Path(customPath) : null;
     }

@@ -15,6 +15,7 @@ public class RoomSelection extends ContextMenuItem {
         super(ctx, parent, nth, menuContext);
         roomSelectionCmpnt = new RoomSelectionComponent(ctx, parent, menuContext);
         this.setMoveCallback((x, y) -> {
+            menuContext.setRoomSelectionCoords(x, y);
             this.roomSelectionCmpnt.onIconMove(
                 x + menuContext.bubbleSize / 2,
                 y + menuContext.bubbleSize / 2

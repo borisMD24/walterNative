@@ -15,6 +15,11 @@ import java.util.ArrayList;
 import java.util.List;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.Path;
+import android.animation.ValueAnimator;
+import android.view.animation.DecelerateInterpolator;
+import com.walter.UdpLogger;
+import android.os.Handler;
+import android.os.Looper;
 
 public class RoomSelectionComponent {
     private static final int DEFAULT_THUMBNAIL_SIZE = 100;
@@ -28,7 +33,19 @@ public class RoomSelectionComponent {
     private ContextMenuContext menuContext;
     private int maxHeight;
     private int maxWidth;
-    
+    private static UdpLogger logger;
+    public static ValueAnimator createEaseOut(float startValue, float endValue, long duration) {
+        ValueAnimator animator = ValueAnimator.ofFloat(startValue, endValue);
+        animator.setDuration(duration);
+        animator.setInterpolator(new DecelerateInterpolator());
+        return animator;
+    }
+    public static ValueAnimator createEaseOut(float startValue, float endValue, long duration, 
+                                            ValueAnimator.AnimatorUpdateListener updateListener) {
+        ValueAnimator animator = createEaseOut(startValue, endValue, duration);
+        animator.addUpdateListener(updateListener);
+        return animator;
+    }
     // ClipPathManager integration
     private ClipPathManager clipPathManager;
 
@@ -48,9 +65,19 @@ public class RoomSelectionComponent {
         
         // Apply default rounded rectangle clipping
         applyDefaultClipping();
-        applyCircularClip();
+        initializeLogger();
     }
-
+    private void initializeLogger() {
+        try {
+            logger = new UdpLogger("192.168.1.18", 9999);
+        } catch (Exception e) {
+        }
+    }
+    private static void logInfo(String message) {
+        if (logger != null) {
+            logger.info(message);
+        }
+    }
     private void setupLayout() {
         thumbnailContainer.setFlexDirection(FlexDirection.ROW);
         thumbnailContainer.setFlexWrap(FlexWrap.WRAP);
@@ -69,31 +96,99 @@ public class RoomSelectionComponent {
         clipPathManager.applyRoundedRectangle(cornerRadius);
     }
 
-    public void display() {
-        if (!isDisplayed) {
-            if (thumbnailContainer.getParent() == null) {
-                container.addView(thumbnailContainer, new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            }
-            this.updateThumbnailContainerDimensions(maxWidth, maxHeight);
-
-            clearThumbnails();
-            List<Room> rooms = parseRoomsFromJson();
-            addThumbnails(rooms);
-            isDisplayed = true;
-            
-            // Update clipping after display to ensure proper dimensions
-            clipPathManager.updateClipping();
+ public void display() {
+    if (!isDisplayed) {
+        if (thumbnailContainer.getParent() == null) {
+            container.addView(thumbnailContainer, 0, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT));
         }
+        this.updateThumbnailContainerDimensions(maxWidth, maxHeight);
+
+        clearThumbnails();
+        List<Room> rooms = parseRoomsFromJson();
+        addThumbnails(rooms);
+        isDisplayed = true;
+        logInfo(Integer.toString(menuContext.roomSelectionX)+";"+Integer.toString(menuContext.roomSelectionY));
+        
+        // Set initial clip to a tiny circle at the touch point
+        setClipPathBasedOnNormalizedValue(0f, menuContext.roomSelectionX, menuContext.roomSelectionY);
+        
+        ValueAnimator animator = createEaseOut(0f, 1f, 500, animation -> {
+            setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
+        });
+        animator.start();
     }
+}
+void setClipPathBasedOnNormalizedValue(float normalized, int absoluteX, int absoluteY) {
+    // 1) Obtenir la position de thumbnailContainer dans le container
+    int[] containerLocation = new int[2];
+    int[] thumbnailLocation = new int[2];
+    container.getLocationOnScreen(containerLocation);
+    thumbnailContainer.getLocationOnScreen(thumbnailLocation);
 
+    // Décalage entre les deux (en coordonnées absolues)
+    int offsetX = thumbnailLocation[0] - containerLocation[0];
+    int offsetY = thumbnailLocation[1] - containerLocation[1];
+
+    // Coordonnées du point de clipping *relatives* à thumbnailContainer
+    int x = absoluteX - offsetX;
+    int y = absoluteY - offsetY;
+
+    // 2) Dimensions du thumbnailContainer
+    int screenW = thumbnailContainer.getWidth();
+    int screenH = thumbnailContainer.getHeight();
+
+    // 3) Rayon maximal pour couvrir tout le container depuis (x, y)
+    float dTL = (float) Math.hypot(x, y);
+    float dTR = (float) Math.hypot(screenW - x, y);
+    float dBL = (float) Math.hypot(x, screenH - y);
+    float dBR = (float) Math.hypot(screenW - x, screenH - y);
+    float maxRadius = Math.max(Math.max(dTL, dTR), Math.max(dBL, dBR));
+
+    // 4) Rayon actuel selon la progression
+    float currentRadius = Math.max(1f, normalized * maxRadius);
+
+    // 5) Clipping circulaire
+    clipPathManager.removeClipping();
+    clipPathManager.setCoords(
+        x - currentRadius,
+        y - currentRadius,
+        x + currentRadius,
+        y + currentRadius
+    );
+    clipPathManager.applyCircle();
+}
+
+// Alternative method using custom path for more control
+void setClipPathBasedOnNormalizedValueCustomPath(float normalized, int x, int y) {
+    // Calculate maximum radius
+    int screenWidth = maxWidth;
+    int screenHeight = maxHeight;
+    float maxRadius = (float) Math.sqrt(screenWidth * screenWidth + screenHeight * screenHeight);
+    
+    // Current radius
+    float currentRadius = Math.max(1f, normalized * maxRadius);
+    
+    // Create custom circular path
+    Path circlePath = new Path();
+    circlePath.addCircle(x, y, currentRadius, Path.Direction.CW);
+    
+    // Apply the custom path
+    clipPathManager.applyCustomPath(circlePath);
+}
     public void undisplay() {
-        if (isDisplayed) {
-            clearThumbnails();
-            container.removeView(thumbnailContainer);
-            isDisplayed = false;
-        }
+        ValueAnimator animator = createEaseOut(1f, 0f, 500, animation -> {
+            setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
+        });
+        animator.start();
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            if (isDisplayed) {
+                clearThumbnails();
+                container.removeView(thumbnailContainer);
+                isDisplayed = false;
+            }
+        }, 500);
     }
 
     private List<Room> parseRoomsFromJson() {
@@ -317,6 +412,11 @@ public class RoomSelectionComponent {
         updateThumbnailContainerPosition(
             x + computeMoveXOffset(),
             y + computeMoveYOffset()
+         );
+         setClipPathBasedOnNormalizedValue(
+            (float)Math.pow(Math.abs(menuContext.normalizedBubbleX*2-1), 4),
+            menuContext.roomSelectionX + (menuContext.bubbleSize / 2), 
+            menuContext.roomSelectionY + (menuContext.bubbleSize / 2)
          );
     }
     

@@ -51,6 +51,7 @@ public class ContextMenuItem {
     public ContextMenuContext menuContext;
     private boolean oppened = false;
     private BiConsumer<Integer, Integer> moveCallback = null;
+    
 
     public interface OnMenuItemClickListener {
         void onMenuItemClick(int index);
@@ -148,8 +149,9 @@ public class ContextMenuItem {
             Math.abs(normalXN1To1) * menuContext.bubbleSize * 1.5, 
             ((this.nth-1) * (normalXN1To1 * (Math.PI/3))) + Math.abs(normalX * Math.PI)
         );
-        
-        return cc.polarToCartesian(computedRotation);
+        Cartesian r = cc.polarToCartesian(computedRotation);
+        this.menuContext.setRoomSelectionCoords((int)r.x, (int)r.y);
+        return r;
     }
     
     public void setCoords() {
@@ -161,7 +163,7 @@ public class ContextMenuItem {
         containerView.setX(targetX);
         containerView.setY(targetY);
         if (moveCallback != null) {
-            moveCallback.accept(targetX, targetY);
+            moveCallback.accept((int)targetX, (int)targetY);
         }
     }
     
