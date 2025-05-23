@@ -6,6 +6,8 @@ import android.graphics.Typeface;
 import android.text.TextUtils;
 import android.util.TypedValue;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -15,6 +17,7 @@ import com.bumptech.glide.Glide;
 import com.bumptech.glide.load.resource.bitmap.CircleCrop;
 import com.bumptech.glide.request.RequestOptions;
 import com.google.android.flexbox.FlexboxLayout;
+import java.util.function.Consumer;
 
 public class RoomThumbnail extends LinearLayout {
     private final ImageView imageView;
@@ -23,7 +26,9 @@ public class RoomThumbnail extends LinearLayout {
     private int radiusPx;
     private String imageUrl;
     public String name;
-
+    private Consumer<Integer> onDrag = null;
+    private Consumer<Integer> onClick = null;
+    
     public RoomThumbnail(Context context,
                          int id,
                          int radiusDp,
@@ -40,6 +45,7 @@ public class RoomThumbnail extends LinearLayout {
         this.imageView = createImageView();
         this.nameLabel = createNameLabel();
         loadImage();
+        setupDragListener();
     }
 
     public RoomThumbnail(Context context,
@@ -73,7 +79,60 @@ public class RoomThumbnail extends LinearLayout {
         setLayoutParams(params);
         parent.addView(this);
     }
-
+    
+    public void setDragCallback(Consumer<Integer> cb){
+        this.onDrag = cb;
+    }
+    public void setClickCallback(Consumer<Integer> cb){
+        this.onClick = cb;
+    }
+    
+    private void setupDragListener() {
+        setOnTouchListener(new OnTouchListener() {
+            private boolean isDragging = false;
+            private float initialX, initialY;
+            private static final float DRAG_THRESHOLD = 10f; // pixels
+            
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        initialX = event.getRawX();
+                        initialY = event.getRawY();
+                        isDragging = false;
+                        return true;
+                        
+                    case MotionEvent.ACTION_MOVE:
+                        float deltaX = Math.abs(event.getRawX() - initialX);
+                        float deltaY = Math.abs(event.getRawY() - initialY);
+                        
+                        if (!isDragging && (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD)) {
+                            isDragging = true;
+                        }
+                        
+                        if (isDragging && onDrag != null) {
+                            // Calculate the Y scroll distance from initial position
+                            float yScrollDistance = event.getRawY() - initialY;
+                            onDrag.accept((int)yScrollDistance);
+                        }
+                        return isDragging;
+                        
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (!isDragging  && onClick != null)  {
+                            // Handle as a click if it wasn't a drag
+                            onClick.accept(RoomThumbnail.this.id);
+                        }
+                        isDragging = false;
+                        return true;
+                        
+                    default:
+                        return false;
+                }
+            }
+        });
+    }
+    
     private ImageView createImageView() {
         ImageView iv = new ImageView(getContext());
         iv.setScaleType(ImageView.ScaleType.CENTER_CROP);
