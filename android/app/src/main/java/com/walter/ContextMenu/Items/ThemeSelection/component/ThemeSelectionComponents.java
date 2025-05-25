@@ -25,7 +25,7 @@ import android.view.MotionEvent;
 import android.animation.ObjectAnimator;
 import android.view.animation.OvershootInterpolator;
 
-public class RoomSelectionComponent {
+public class ThemeSelectionComponents {
     private static final int DEFAULT_THUMBNAIL_SIZE = 100;
     private static final int DEFAULT_SPACING = 20;
     private static final float SCROLL_SENSITIVITY = 0.8f;
@@ -71,7 +71,7 @@ public class RoomSelectionComponent {
     // ClipPathManager integration
     private ClipPathManager clipPathManager;
 
-    public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
+    public ThemeSelectionComponents(Context context, ViewGroup container, ContextMenuContext menuContext) {
         this.context = context;
         this.container = container;
         this.menuContext = menuContext;
@@ -200,7 +200,7 @@ public class RoomSelectionComponent {
             List<Room> rooms = parseRoomsFromJson();
             addThumbnails(rooms);
             isDisplayed = true;
-            logInfo(Integer.toString(menuContext.roomSelectionX)+";"+Integer.toString(menuContext.roomSelectionY));
+            logInfo(Integer.toString(menuContext.themeSelectionX)+";"+Integer.toString(menuContext.themeSelectionY));
             
             // Reset scroll position
             currentScrollY = 0f;
@@ -208,10 +208,10 @@ public class RoomSelectionComponent {
             updateScrollBounds();
             
             // Set initial clip to a tiny circle at the touch point
-            setClipPathBasedOnNormalizedValue(0f, menuContext.roomSelectionX, menuContext.roomSelectionY);
+            setClipPathBasedOnNormalizedValue(0f, menuContext.themeSelectionX, menuContext.themeSelectionY);
             
             ValueAnimator animator = createEaseOut(0f, 1f, 500, animation -> {
-                setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
+                setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.themeSelectionX, menuContext.themeSelectionY);
             });
             animator.start();
         }
@@ -259,7 +259,7 @@ public class RoomSelectionComponent {
 
     public void undisplay() {
         ValueAnimator animator = createEaseOut(1f, 0f, 500, animation -> {
-            setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
+            setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.themeSelectionX, menuContext.themeSelectionY);
         });
         animator.start();
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
@@ -598,7 +598,7 @@ public class RoomSelectionComponent {
     }
     
     private int computeMoveXOffset(){
-        return(int)(
+         return(int)(
             - menuContext.normalizedBubbleX * maxWidth
             - (menuContext.normalizedBubbleX * 2 - 1) * menuContext.bubbleSize
             -  menuContext.bubbleSize / 10 * menuContext.normalizedBubbleX
@@ -607,19 +607,20 @@ public class RoomSelectionComponent {
     
     private int computeMoveYOffset(){
         return(int)(
-            - menuContext.bubbleSize / 2
+            menuContext.bubbleSize / 2
+            - maxHeight
         );
     }
     
     public void onIconMove(){
         updateThumbnailContainerPosition(
-            menuContext.roomSelectionX + computeMoveXOffset(),
-            menuContext.roomSelectionY + computeMoveYOffset()
+            menuContext.themeSelectionX + computeMoveXOffset(),
+            menuContext.themeSelectionY + computeMoveYOffset()
          );
          setClipPathBasedOnNormalizedValue(
             (float)Math.pow(Math.abs(menuContext.normalizedBubbleX*2-1), 4),
-            menuContext.roomSelectionX, 
-            menuContext.roomSelectionY
+            menuContext.themeSelectionX, 
+            menuContext.themeSelectionY
          );
     }
     

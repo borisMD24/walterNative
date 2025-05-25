@@ -23,6 +23,8 @@ public class ContextMenuContext {
     protected int bubbleSize = 200;
     protected int roomSelectionX;
     protected int roomSelectionY;
+    protected int themeSelectionX;
+    protected int themeSelectionY;
     private Context ctx;
     ContextMenuContext(Context ctx) {
         this.ctx = ctx;
@@ -127,5 +129,9 @@ public class ContextMenuContext {
     public void setRoomSelectionCoords(int x, int y){
         this.roomSelectionX = x;
         this.roomSelectionY = y;
+    }
+    public void setThemeSelectionCoords(int x, int y){
+        this.themeSelectionX = x;
+        this.themeSelectionY = y;
     }
 }

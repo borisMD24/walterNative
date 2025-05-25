@@ -22,7 +22,7 @@ public class ContextMenuView {
         this.menuContext = new ContextMenuContext(this.context);
         // Initialize items
         this.items = new ContextMenuItem[3];
-        items[0] = new ContextMenuItem(context, underlay, 0, menuContext);
+        items[0] = new ThemeSelection(context, underlay, 0, menuContext);
         items[1] = new Brightness(context, underlay, 1, menuContext);
         items[2] = new RoomSelection(context, underlay, 2, menuContext);
         

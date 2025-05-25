@@ -2,23 +2,23 @@ package com.walter;
 import android.view.ViewGroup;
 import android.content.Context;
 import com.walter.ContextMenuItem; 
-import com.walter.RoomSelectionComponent;
+import com.walter.ThemeSelectionComponents;
 
 import androidx.core.app.NotificationCompat;
 import android.widget.Toast;
 import com.walter.ContextMenuContext;
 
-public class RoomSelection extends ContextMenuItem {
+public class ThemeSelection extends ContextMenuItem {
     private boolean oppened = false;
-    private RoomSelectionComponent roomSelectionCmpnt;
-    RoomSelection(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext){
+    private ThemeSelectionComponents roomSelectionCmpnt;
+    ThemeSelection(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext){
         super(ctx, parent, nth, menuContext);
-        roomSelectionCmpnt = new RoomSelectionComponent(ctx, parent, menuContext);
+        roomSelectionCmpnt = new ThemeSelectionComponents(ctx, parent, menuContext);
         this.setMoveCallback((x, y) -> {
-            menuContext.setRoomSelectionCoords(x + menuContext.bubbleSize/2, y + menuContext.bubbleSize/2);
+            menuContext.setThemeSelectionCoords(x + menuContext.bubbleSize / 2, y + menuContext.bubbleSize / 2);
             this.roomSelectionCmpnt.onIconMove();
         });
-        this.setIconID(R.drawable.kitchen);
+        this.setIconID(R.drawable.theme);
     }
     @Override
 public void click() {
