@@ -2,314 +2,332 @@ package com.walter;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Path;
+import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.ScrollView;
+
 import com.google.android.flexbox.FlexDirection;
 import com.google.android.flexbox.FlexWrap;
 import com.google.android.flexbox.FlexboxLayout;
 import com.google.android.flexbox.JustifyContent;
+
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.List;
-import android.graphics.drawable.GradientDrawable;
-import android.graphics.Path;
-import android.animation.ValueAnimator;
-import android.view.animation.DecelerateInterpolator;
-import com.walter.UdpLogger;
-import android.os.Handler;
-import android.os.Looper;
-import android.widget.ScrollView;
-import android.view.MotionEvent;
-import android.animation.ObjectAnimator;
-import android.view.animation.OvershootInterpolator;
 
+/**
+ * A component that displays a scrollable grid of room thumbnails with smooth
+ * animations
+ * and customizable clipping paths.
+ */
 public class RoomSelectionComponent {
+
+    // Configuration Constants
     private static final int DEFAULT_THUMBNAIL_SIZE = 100;
     private static final int DEFAULT_SPACING = 20;
-    private static final float SCROLL_SENSITIVITY = 0.8f;
-    private static final int SCROLL_ANIMATION_DURATION = 300;
-    private static final float MIN_SCROLL_VELOCITY = 50f;
-    private static final float SCROLL_FRICTION = 0.85f;
-    
+    private static final int MIN_HEIGHT = 120;
+    private static final int BORDER_WIDTH = 4;
+    private static final int BORDER_PADDING = 8;
+    private static final int ANIMATION_DURATION = 500;
+
+    // Core Components
     private final Context context;
-    private final ViewGroup container;
-    private final List<RoomThumbnail> thumbnails = new ArrayList<>();
-    private int thumbnailRadius = DEFAULT_THUMBNAIL_SIZE / 2;
-    private FlexboxLayout thumbnailContainer;
+    private final ViewGroup parentContainer;
+    private final ContextMenuContext menuContext;
+
+    // UI Components
+    private FrameLayout borderContainer;
     private ScrollView scrollView;
-    private FrameLayout borderContainer; // New border container
+    private FlexboxLayout thumbnailContainer;
+
+    // Managers - REMOVED final keyword to fix compilation error
+    private ClipPathManager clipPathManager;
+    private ScrollManager scrollManager;
+    private AnimationManager animationManager;
+    private StyleManager styleManager;
+
+    // State
+    private final List<RoomThumbnail> thumbnails = new ArrayList<>();
     private boolean isDisplayed = false;
-    private ContextMenuContext menuContext;
     private int maxHeight;
     private int maxWidth;
+    private int thumbnailRadius;
+
+    // Logger
     private static UdpLogger logger;
-    
-    // Scroll state variables
-    private float currentScrollY = 0f;
-    private float maxScrollY = 0f;
-    private boolean isScrolling = false;
-    private ValueAnimator scrollAnimator;
-    private float scrollVelocity = 0f;
-    private long lastScrollTime = 0;
-    
-    public static ValueAnimator createEaseOut(float startValue, float endValue, long duration) {
-        ValueAnimator animator = ValueAnimator.ofFloat(startValue, endValue);
-        animator.setDuration(duration);
-        animator.setInterpolator(new DecelerateInterpolator());
-        return animator;
-    }
-    
-    public static ValueAnimator createEaseOut(float startValue, float endValue, long duration, 
-                                            ValueAnimator.AnimatorUpdateListener updateListener) {
-        ValueAnimator animator = createEaseOut(startValue, endValue, duration);
-        animator.addUpdateListener(updateListener);
-        return animator;
-    }
-    
-    // ClipPathManager integration
-    private ClipPathManager clipPathManager;
 
     public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
         this.context = context;
-        this.container = container;
+        this.parentContainer = container;
         this.menuContext = menuContext;
-        this.maxHeight = menuContext.screenHeight/3;
+        this.maxHeight = menuContext.screenHeight / 3;
         this.maxWidth = menuContext.screenWidth - 2 * menuContext.bubbleSize;
-        
-        // Create the hierarchy: borderContainer -> ScrollView -> thumbnailContainer
-        this.borderContainer = new FrameLayout(context);
-        this.scrollView = new ScrollView(context);
-        this.thumbnailContainer = new FlexboxLayout(context);
-        
-        // Initialize ClipPathManager on the border container
-        this.clipPathManager = new ClipPathManager(borderContainer);
-        
+        this.thumbnailRadius = DEFAULT_THUMBNAIL_SIZE / 2;
+
+        initializeComponents();
+        initializeManagers();
         setupLayout();
-        this.updateThumbnailContainerDimensions(maxWidth, maxHeight);
-        
-        // Apply default rounded rectangle clipping
-        applyDefaultClipping();
         initializeLogger();
     }
-    
-    private void initializeLogger() {
-        try {
-            logger = new UdpLogger("192.168.1.18", 9999);
-        } catch (Exception e) {
-        }
+
+    private void initializeComponents() {
+        borderContainer = new FrameLayout(context);
+        scrollView = new ScrollView(context);
+        thumbnailContainer = new FlexboxLayout(context);
     }
-    
-    private static void logInfo(String message) {
-        if (logger != null) {
-            logger.info(message);
-        }
+
+    private void initializeManagers() {
+        clipPathManager = new ClipPathManager(borderContainer);
+        scrollManager = new ScrollManager(scrollView, this::onScrollPositionChanged);
+        animationManager = new AnimationManager();
+        styleManager = new StyleManager(borderContainer, menuContext);
     }
-    
+
     private void setupLayout() {
-        // Configure border container
-        setupBorderContainer();
-        
-        // Configure ScrollView
-        scrollView.setVerticalScrollBarEnabled(false);
-        scrollView.setHorizontalScrollBarEnabled(false);
-        scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
-        scrollView.setBackgroundColor(Color.TRANSPARENT); // Make ScrollView transparent
-        
-        // Configure FlexboxLayout
+        configureThumbnailContainer();
+        configureScrollView();
+        configureBorderContainer();
+        buildViewHierarchy();
+        applyDefaultStyling();
+    }
+
+    private void configureThumbnailContainer() {
         thumbnailContainer.setFlexDirection(FlexDirection.ROW);
         thumbnailContainer.setFlexWrap(FlexWrap.WRAP);
         thumbnailContainer.setJustifyContent(JustifyContent.CENTER);
-        thumbnailContainer.setBackgroundColor(Color.TRANSPARENT); // Make thumbnailContainer transparent
-        
-        // Build the hierarchy
+        thumbnailContainer.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    private void configureScrollView() {
+        scrollView.setVerticalScrollBarEnabled(false);
+        scrollView.setHorizontalScrollBarEnabled(false);
+        scrollView.setOverScrollMode(ScrollView.OVER_SCROLL_NEVER);
+        scrollView.setBackgroundColor(Color.TRANSPARENT);
+    }
+
+    private void configureBorderContainer() {
+        borderContainer.post(() -> styleManager.applyDefaultStyle());
+    }
+
+    private void buildViewHierarchy() {
         scrollView.addView(thumbnailContainer, new ScrollView.LayoutParams(
-            ScrollView.LayoutParams.MATCH_PARENT,
-            ScrollView.LayoutParams.WRAP_CONTENT));
-            
+                ScrollView.LayoutParams.MATCH_PARENT,
+                ScrollView.LayoutParams.WRAP_CONTENT));
+
         borderContainer.addView(scrollView, new FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT));
-        
-        // Setup scroll listener for smooth scrolling feedback
-        scrollView.getViewTreeObserver().addOnScrollChangedListener(() -> {
-            currentScrollY = scrollView.getScrollY();
-            updateScrollBounds();
-        });
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
-    /**
-     * Sets up the border container with default styling
-     */
-    private void setupBorderContainer() {
-        borderContainer.post(() -> {
-            float cornerRadius = menuContext.bubbleSize / 4f;
-            int borderWidth = 4;
-            int borderColor = Color.parseColor("#CCCCCC");
-            int backgroundColor = Color.WHITE;
-            
-            applyBorderContainerStyle(cornerRadius, borderWidth, borderColor, backgroundColor);
-        });
-    }
-
-    /**
-     * Applies styling to the border container
-     */
-    private void applyBorderContainerStyle(float cornerRadius, int borderWidth, int borderColor, int backgroundColor) {
-        GradientDrawable drawable = new GradientDrawable();
-        drawable.setShape(GradientDrawable.RECTANGLE);
-        drawable.setCornerRadius(cornerRadius);
-        drawable.setStroke(borderWidth, borderColor);
-        drawable.setColor(backgroundColor);
-        
-        // Add padding to the border container so content doesn't touch the border
-        int padding = borderWidth + 8;
-        borderContainer.setPadding(padding, padding, padding, padding);
-        
-        borderContainer.setBackground(drawable);
-    }
-
-    /**
-     * Updates the border container styling with custom parameters
-     */
-    public void updateBorderContainerStyle(float cornerRadius, int borderWidth, int borderColor, int backgroundColor) {
-        borderContainer.post(() -> {
-            applyBorderContainerStyle(cornerRadius, borderWidth, borderColor, backgroundColor);
-        });
-    }
-
-    /**
-     * Applies default clipping (rounded rectangle) to the border container
-     */
-    private void applyDefaultClipping() {
+    private void applyDefaultStyling() {
         float cornerRadius = menuContext.bubbleSize / 8f;
         clipPathManager.applyRoundedRectangle(cornerRadius);
     }
 
-    public void display() {
-        if (!isDisplayed) {
-            if (borderContainer.getParent() == null) {
-                container.addView(borderContainer, 0, new ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT));
-            }
-            this.updateThumbnailContainerDimensions(maxWidth, maxHeight);
-            setupBorderContainer();
-            clearThumbnails();
-            List<Room> rooms = parseRoomsFromJson();
-            addThumbnails(rooms);
-            isDisplayed = true;
-            logInfo(Integer.toString(menuContext.roomSelectionX)+";"+Integer.toString(menuContext.roomSelectionY));
-            
-            // Reset scroll position
-            currentScrollY = 0f;
-            scrollView.scrollTo(0, 0);
-            updateScrollBounds();
-            
-            // Set initial clip to a tiny circle at the touch point
-            setClipPathBasedOnNormalizedValue(0f, menuContext.roomSelectionX, menuContext.roomSelectionY);
-            
-            ValueAnimator animator = createEaseOut(0f, 1f, 500, animation -> {
-                setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
-            });
-            animator.start();
+    private void initializeLogger() {
+        try {
+            logger = new UdpLogger("192.168.1.18", 9999);
+        } catch (Exception e) {
+            // Logger initialization failed - continue without logging
         }
     }
-    
-    void setClipPathBasedOnNormalizedValue(float normalized, int absoluteX, int absoluteY) {
-        // Get positions of container and borderContainer
-        int[] containerLocation = new int[2];
-        int[] borderContainerLocation = new int[2];
-        container.getLocationOnScreen(containerLocation);
-        borderContainer.getLocationOnScreen(borderContainerLocation);
 
-        // Offset between the two (in absolute coordinates)
-        int offsetX = borderContainerLocation[0] - containerLocation[0];
-        int offsetY = borderContainerLocation[1] - containerLocation[1];
+    // Public API Methods
 
-        // Clipping point coordinates *relative* to borderContainer
-        int x = absoluteX - offsetX;
-        int y = absoluteY - offsetY;
+    public void display() {
+        if (isDisplayed)
+            return;
 
-        // Border container dimensions
-        int screenW = borderContainer.getWidth();
-        int screenH = borderContainer.getHeight();
+        addToParentContainer();
+        loadAndDisplayRooms();
+        animateIn();
+        resetScrollPosition();
 
-        // Maximum radius to cover the entire borderContainer from (x, y)
-        float dTL = (float) Math.hypot(x, y);
-        float dTR = (float) Math.hypot(screenW - x, y);
-        float dBL = (float) Math.hypot(x, screenH - y);
-        float dBR = (float) Math.hypot(screenW - x, screenH - y);
-        float maxRadius = Math.max(Math.max(dTL, dTR), Math.max(dBL, dBR));
+        isDisplayed = true;
+        logInfo("Room selection displayed at: " + menuContext.roomSelectionX + "," + menuContext.roomSelectionY);
+    }
 
-        // Current radius according to progress
-        float currentRadius = Math.max(1f, normalized * maxRadius);
+    public void hide() {
+        if (!isDisplayed)
+            return;
 
-        // Circular clipping
-        clipPathManager.removeClipping();
-        clipPathManager.setCoords(
-            x - currentRadius,
-            y - currentRadius,
-            x + currentRadius,
-            y + currentRadius
-        );
+        animateOut(() -> {
+            removeFromParentContainer();
+            clearThumbnails();
+            isDisplayed = false;
+        });
+    }
+
+    // ADDED: undisplay method to fix the missing method error
+    public void undisplay() {
+        hide();
+    }
+
+    public void onIconMove() {
+        updatePosition();
+        updateClippingForMovement();
+    }
+
+    // Layout Management
+
+    public void updateDimensions(int width, int height) {
+        ViewGroup.LayoutParams params = borderContainer.getLayoutParams();
+        if (params != null) {
+            params.width = width;
+            params.height = height;
+            borderContainer.setLayoutParams(params);
+
+            if (height > 0 && height != ViewGroup.LayoutParams.MATCH_PARENT &&
+                    height != ViewGroup.LayoutParams.WRAP_CONTENT) {
+                maxHeight = height;
+            }
+
+            borderContainer.requestLayout();
+            schedulePostLayoutUpdate();
+        }
+    }
+
+    public void updatePosition(int x, int y) {
+        borderContainer.setX(x);
+        borderContainer.setY(y);
+    }
+
+    public void updateMargins(int left, int top, int right, int bottom) {
+        ViewGroup.LayoutParams params = borderContainer.getLayoutParams();
+
+        if (params instanceof ViewGroup.MarginLayoutParams) {
+            ((ViewGroup.MarginLayoutParams) params).setMargins(left, top, right, bottom);
+        } else {
+            FrameLayout.LayoutParams newParams = new FrameLayout.LayoutParams(
+                    params.width, params.height);
+            newParams.setMargins(left, top, right, bottom);
+            borderContainer.setLayoutParams(newParams);
+        }
+
+        borderContainer.requestLayout();
+    }
+
+    // Styling Methods
+
+    public void updateStyle(float cornerRadius, int borderWidth, int borderColor, int backgroundColor) {
+        styleManager.updateStyle(cornerRadius, borderWidth, borderColor, backgroundColor);
+    }
+
+    public void setMaxHeight(int maxHeight) {
+        this.maxHeight = maxHeight;
+        if (isDisplayed) {
+            adjustContainerHeight();
+        }
+    }
+
+    // Clipping Methods
+
+    public void applyRoundedRectangleClip(float cornerRadius) {
+        clipPathManager.applyRoundedRectangle(cornerRadius);
+    }
+
+    public void applyCircularClip() {
         clipPathManager.applyCircle();
     }
 
-    public void undisplay() {
-        ValueAnimator animator = createEaseOut(1f, 0f, 500, animation -> {
-            setClipPathBasedOnNormalizedValue((float)animation.getAnimatedValue(), menuContext.roomSelectionX, menuContext.roomSelectionY);
-        });
-        animator.start();
-        new Handler(Looper.getMainLooper()).postDelayed(() -> {
-            if (isDisplayed) {
-                clearThumbnails();
-                container.removeView(borderContainer);
-                isDisplayed = false;
-            }
-        }, 500);
+    public void applyCustomPathClip(Path path) {
+        clipPathManager.applyCustomPath(path);
     }
 
-    private List<Room> parseRoomsFromJson() {
-        List<Room> rooms = new ArrayList<>();
-        try {
-            JSONObject jsonObject = new JSONObject(GetJson.get());
-            JSONArray jsonRooms = jsonObject.getJSONArray("rooms");
-            for (int i = 0; i < jsonRooms.length(); i++) {
-                JSONObject room = jsonRooms.getJSONObject(i);
-                rooms.add(new Room(
-                        room.getString("name"),
-                        room.getInt("id"),
-                        room.getString("img")));
-            }
-        } catch (JSONException e) {
-            e.printStackTrace();
+    public void removeClipping() {
+        clipPathManager.removeClipping();
+    }
+
+    // Scroll Methods
+
+    public void scrollToTop() {
+        scrollManager.scrollToTop();
+    }
+
+    public void scrollToBottom() {
+        scrollManager.scrollToBottom();
+    }
+
+    public void scrollBy(int deltaY) {
+        scrollManager.scrollBy(deltaY);
+    }
+
+    public boolean isScrollable() {
+        return scrollManager.isScrollable();
+    }
+
+    // Getters
+
+    public FrameLayout getBorderContainer() {
+        return borderContainer;
+    }
+
+    public ScrollView getScrollView() {
+        return scrollView;
+    }
+
+    public FlexboxLayout getThumbnailContainer() {
+        return thumbnailContainer;
+    }
+
+    public ClipPathManager getClipPathManager() {
+        return clipPathManager;
+    }
+
+    // Private Implementation Methods
+
+    private void addToParentContainer() {
+        if (borderContainer.getParent() == null) {
+            parentContainer.addView(borderContainer, 0, new ViewGroup.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT));
         }
-        return rooms;
+        updateDimensions(maxWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+        styleManager.applyDefaultStyle();
     }
 
-    private void addThumbnails(List<Room> rooms) {
+    private void removeFromParentContainer() {
+        parentContainer.removeView(borderContainer);
+    }
+
+    private void loadAndDisplayRooms() {
+        clearThumbnails();
+        List<Room> rooms = RoomDataParser.parseRoomsFromJson();
+        createThumbnails(rooms);
+        scheduleHeightAdjustment();
+    }
+
+    private void createThumbnails(List<Room> rooms) {
         int thumbnailSize = thumbnailRadius * 2;
         int spacing = DEFAULT_SPACING;
+
         for (Room room : rooms) {
             FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(thumbnailSize, thumbnailSize);
             params.setMargins(spacing / 2, spacing / 2, spacing / 2, spacing / 2);
+
             RoomThumbnail thumbnail = new RoomThumbnail(
-                    context, room.id, thumbnailRadius / 2, room.imageUrl, thumbnailContainer, params);
+                    context,
+                    room.id,
+                    thumbnailRadius / 2,
+                    room.imageUrl,
+                    thumbnailContainer,
+                    params);
             thumbnail.name = room.name;
             thumbnail.updateNameLabel();
-            thumbnail.setDragCallback((dy)->{
-                this.onScroll(dy);
-            });
-            thumbnail.setClickCallback((id)->{
-                this.handleIconClick(id);
-            });
+            thumbnail.setDragCallback(scrollManager::onScroll);
+            thumbnail.setClickCallback(this::handleThumbnailClick);
+
             thumbnails.add(thumbnail);
         }
-        
-        // Update scroll bounds after adding thumbnails
-        thumbnailContainer.post(() -> updateScrollBounds());
+
+        scheduleScrollBoundsUpdate();
     }
 
     private void clearThumbnails() {
@@ -318,14 +336,123 @@ public class RoomSelectionComponent {
         }
         thumbnails.clear();
         thumbnailContainer.removeAllViews();
-        currentScrollY = 0f;
-        maxScrollY = 0f;
+        scrollManager.resetScroll();
     }
 
+    private void adjustContainerHeight() {
+        thumbnailContainer.post(() -> {
+            int contentHeight = thumbnailContainer.getHeight();
+            int borderPadding = borderContainer.getPaddingTop() + borderContainer.getPaddingBottom();
+            int totalNeededHeight = contentHeight + borderPadding;
+            int newHeight = Math.min(Math.max(totalNeededHeight, MIN_HEIGHT), maxHeight);
+
+            updateContainerHeights(newHeight, borderPadding);
+        });
+    }
+
+    private void updateContainerHeights(int newBorderHeight, int borderPadding) {
+        ViewGroup.LayoutParams borderParams = borderContainer.getLayoutParams();
+        if (borderParams != null && borderParams.height != newBorderHeight) {
+            borderParams.height = newBorderHeight;
+            borderContainer.setLayoutParams(borderParams);
+
+            int scrollViewHeight = newBorderHeight - borderPadding;
+            FrameLayout.LayoutParams scrollParams = (FrameLayout.LayoutParams) scrollView.getLayoutParams();
+            if (scrollParams != null) {
+                scrollParams.height = scrollViewHeight;
+                scrollView.setLayoutParams(scrollParams);
+            }
+
+            schedulePostLayoutUpdate();
+        }
+    }
+
+    private void animateIn() {
+        setInitialClipState();
+        animationManager.createRevealAnimation(0f, 1f, ANIMATION_DURATION,
+                progress -> updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY))
+                .start();
+    }
+
+    private void animateOut(Runnable onComplete) {
+        animationManager.createRevealAnimation(1f, 0f, ANIMATION_DURATION,
+                progress -> updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY))
+                .start();
+
+        new Handler(Looper.getMainLooper()).postDelayed(onComplete, ANIMATION_DURATION);
+    }
+
+    private void setInitialClipState() {
+        updateClippingForReveal(0f, menuContext.roomSelectionX, menuContext.roomSelectionY);
+    }
+
+    private void updateClippingForReveal(float progress, int absoluteX, int absoluteY) {
+        ClippingCalculator calculator = new ClippingCalculator(
+                parentContainer, borderContainer, absoluteX, absoluteY);
+        calculator.applyCircularClip(clipPathManager, progress);
+    }
+
+    private void updateClippingForMovement() {
+        float progress = (float) Math.pow(Math.abs(menuContext.normalizedBubbleX * 2 - 1), 4);
+        updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY);
+    }
+
+    private void updatePosition() {
+        int x = menuContext.roomSelectionX + computeMoveXOffset();
+        int y = menuContext.roomSelectionY + computeMoveYOffset();
+        updatePosition(x, y);
+    }
+
+    private int computeMoveXOffset() {
+        return (int) (-menuContext.normalizedBubbleX * maxWidth
+                - (menuContext.normalizedBubbleX * 2 - 1) * menuContext.bubbleSize
+                - menuContext.bubbleSize / 10 * menuContext.normalizedBubbleX);
+    }
+
+    private int computeMoveYOffset() {
+        return (int) (-menuContext.bubbleSize / 2);
+    }
+
+    private void resetScrollPosition() {
+        scrollManager.resetScroll();
+        scrollView.scrollTo(0, 0);
+    }
+
+    private void handleThumbnailClick(int id) {
+        logInfo("Thumbnail clicked: " + id);
+    }
+
+    private void onScrollPositionChanged() {
+        schedulePostLayoutUpdate();
+    }
+
+    private void scheduleHeightAdjustment() {
+        thumbnailContainer.post(this::adjustContainerHeight);
+    }
+
+    private void scheduleScrollBoundsUpdate() {
+        thumbnailContainer.post(scrollManager::updateScrollBounds);
+    }
+
+    private void schedulePostLayoutUpdate() {
+        borderContainer.post(() -> {
+            scrollManager.updateScrollBounds();
+            clipPathManager.updateClipping();
+        });
+    }
+
+    private static void logInfo(String message) {
+        if (logger != null) {
+            logger.info(message);
+        }
+    }
+
+    // Inner Classes and Helpers
+
     private static class Room {
-        String name;
-        int id;
-        String imageUrl;
+        final String name;
+        final int id;
+        final String imageUrl;
 
         Room(String name, int id, String imageUrl) {
             this.name = name;
@@ -333,364 +460,234 @@ public class RoomSelectionComponent {
             this.imageUrl = imageUrl;
         }
     }
-    
-    /**
-     * Updates scroll bounds based on content and container sizes
-     */
-    private void updateScrollBounds() {
-        int contentHeight = thumbnailContainer.getHeight();
-        int containerHeight = scrollView.getHeight();
-        maxScrollY = Math.max(0, contentHeight - containerHeight);
-        
-        // Clamp current scroll position
-        currentScrollY = Math.max(0, Math.min(currentScrollY, maxScrollY));
-    }
-    
-    /**
-     * Smoothly scroll to a specific Y position
-     */
-    private void smoothScrollTo(float targetY) {
-        targetY = Math.max(0, Math.min(targetY, maxScrollY));
-        
-        if (scrollAnimator != null && scrollAnimator.isRunning()) {
-            scrollAnimator.cancel();
+
+    private static class RoomDataParser {
+        static List<Room> parseRoomsFromJson() {
+            List<Room> rooms = new ArrayList<>();
+            try {
+                JSONObject jsonObject = new JSONObject(GetJson.get());
+                JSONArray jsonRooms = jsonObject.getJSONArray("rooms");
+
+                for (int i = 0; i < jsonRooms.length(); i++) {
+                    JSONObject room = jsonRooms.getJSONObject(i);
+                    rooms.add(new Room(
+                            room.getString("name"),
+                            room.getInt("id"),
+                            room.getString("img")));
+                }
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
+            return rooms;
         }
-        
-        scrollAnimator = ValueAnimator.ofFloat(currentScrollY, targetY);
-        scrollAnimator.setDuration(SCROLL_ANIMATION_DURATION);
-        scrollAnimator.setInterpolator(new DecelerateInterpolator());
-        scrollAnimator.addUpdateListener(animation -> {
-            float value = (float) animation.getAnimatedValue();
-            scrollView.scrollTo(0, (int) value);
-            currentScrollY = value;
-        });
-        scrollAnimator.start();
     }
-    
-    /**
-     * Apply momentum scrolling with deceleration
-     */
-    private void applyMomentumScroll(float velocity) {
-        if (Math.abs(velocity) < MIN_SCROLL_VELOCITY) {
-            return;
+
+    private static class StyleManager {
+        private final FrameLayout borderContainer;
+        private final ContextMenuContext menuContext;
+
+        StyleManager(FrameLayout borderContainer, ContextMenuContext menuContext) {
+            this.borderContainer = borderContainer;
+            this.menuContext = menuContext;
         }
-        
-        // Calculate target position based on velocity and friction
-        float decelerationDistance = (velocity * velocity) / (2 * SCROLL_FRICTION * 1000);
-        if (velocity < 0) {
-            decelerationDistance = -decelerationDistance;
+
+        void applyDefaultStyle() {
+            float cornerRadius = menuContext.bubbleSize / 4f;
+            int borderColor = Color.parseColor("#CCCCCC");
+            updateStyle(cornerRadius, BORDER_WIDTH, borderColor, Color.WHITE);
         }
-        
-        float targetY = currentScrollY + decelerationDistance;
-        smoothScrollTo(targetY);
+
+        void updateStyle(float cornerRadius, int borderWidth, int borderColor, int backgroundColor) {
+            GradientDrawable drawable = new GradientDrawable();
+            drawable.setShape(GradientDrawable.RECTANGLE);
+            drawable.setCornerRadius(cornerRadius);
+            drawable.setStroke(borderWidth, borderColor);
+            drawable.setColor(backgroundColor);
+
+            int padding = borderWidth + BORDER_PADDING;
+            borderContainer.setPadding(padding, padding, padding, padding);
+            borderContainer.setBackground(drawable);
+        }
     }
-    
-    /**
-     * Handle scroll input from drag callbacks
-     */
-    private void onScroll(int dy) {
-        logInfo("Scroll delta: " + Integer.toString(dy));
-        
-        long currentTime = System.currentTimeMillis();
-        float deltaTime = Math.max(1, currentTime - lastScrollTime); // Prevent division by zero
-        lastScrollTime = currentTime;
-        
-        // Apply scroll sensitivity
-        float adjustedDy = dy * SCROLL_SENSITIVITY;
-        
-        // Calculate new scroll position
-        float newScrollY = currentScrollY + adjustedDy;
-        newScrollY = Math.max(0, Math.min(newScrollY, maxScrollY));
-        
-        // Calculate velocity for momentum scrolling
-        scrollVelocity = adjustedDy / deltaTime * 1000; // pixels per second
-        
-        // Apply immediate scroll
-        if (Math.abs(adjustedDy) > 0) {
-            scrollView.scrollTo(0, (int) newScrollY);
-            currentScrollY = newScrollY;
-            isScrolling = true;
-            
-            // Stop any existing momentum animation
+
+    private static class ScrollManager {
+        private static final float SCROLL_SENSITIVITY = 0.8f;
+        private static final int SCROLL_ANIMATION_DURATION = 300;
+        private static final float MIN_SCROLL_VELOCITY = 50f;
+        private static final float SCROLL_FRICTION = 0.85f;
+
+        private final ScrollView scrollView;
+        private final Runnable onScrollChanged;
+
+        private float currentScrollY = 0f;
+        private float maxScrollY = 0f;
+        private boolean isScrolling = false;
+        private android.animation.ValueAnimator scrollAnimator;
+        private float scrollVelocity = 0f;
+        private long lastScrollTime = 0;
+
+        ScrollManager(ScrollView scrollView, Runnable onScrollChanged) {
+            this.scrollView = scrollView;
+            this.onScrollChanged = onScrollChanged;
+            setupScrollListener();
+        }
+
+        private void setupScrollListener() {
+            scrollView.getViewTreeObserver().addOnScrollChangedListener(() -> {
+                currentScrollY = scrollView.getScrollY();
+                updateScrollBounds();
+                onScrollChanged.run();
+            });
+        }
+
+        void updateScrollBounds() {
+            int contentHeight = ((ViewGroup) scrollView.getChildAt(0)).getHeight();
+            int containerHeight = scrollView.getHeight();
+            maxScrollY = Math.max(0, contentHeight - containerHeight);
+            currentScrollY = Math.max(0, Math.min(currentScrollY, maxScrollY));
+        }
+
+        void scrollToTop() {
+            smoothScrollTo(0);
+        }
+
+        void scrollToBottom() {
+            updateScrollBounds();
+            smoothScrollTo(maxScrollY);
+        }
+
+        void scrollBy(int deltaY) {
+            onScroll(deltaY);
+        }
+
+        void resetScroll() {
+            currentScrollY = 0f;
+            maxScrollY = 0f;
+        }
+
+        boolean isScrollable() {
+            return maxScrollY > 0;
+        }
+
+        private void smoothScrollTo(float targetY) {
+            targetY = Math.max(0, Math.min(targetY, maxScrollY));
+
             if (scrollAnimator != null && scrollAnimator.isRunning()) {
                 scrollAnimator.cancel();
             }
-            
-            // Set up momentum scroll when scrolling stops
-            Handler handler = new Handler(Looper.getMainLooper());
-            handler.removeCallbacksAndMessages("momentum_scroll");
-            handler.postDelayed(() -> {
-                if (isScrolling) {
-                    isScrolling = false;
-                    applyMomentumScroll(scrollVelocity);
+
+            scrollAnimator = android.animation.ValueAnimator.ofFloat(currentScrollY, targetY);
+            scrollAnimator.setDuration(SCROLL_ANIMATION_DURATION);
+            scrollAnimator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            scrollAnimator.addUpdateListener(animation -> {
+                float value = (float) animation.getAnimatedValue();
+                scrollView.scrollTo(0, (int) value);
+                currentScrollY = value;
+            });
+            scrollAnimator.start();
+        }
+
+        private void onScroll(int dy) {
+            long currentTime = System.currentTimeMillis();
+            float deltaTime = Math.max(1, currentTime - lastScrollTime);
+            lastScrollTime = currentTime;
+
+            float adjustedDy = dy * SCROLL_SENSITIVITY;
+            float newScrollY = Math.max(0, Math.min(currentScrollY + adjustedDy, maxScrollY));
+
+            scrollVelocity = adjustedDy / deltaTime * 1000;
+
+            if (Math.abs(adjustedDy) > 0) {
+                scrollView.scrollTo(0, (int) newScrollY);
+                currentScrollY = newScrollY;
+                isScrolling = true;
+
+                if (scrollAnimator != null && scrollAnimator.isRunning()) {
+                    scrollAnimator.cancel();
                 }
-            }, 100); // Wait 100ms after last scroll input
-        }
-        
-        // Provide haptic feedback at scroll boundaries
-        if (newScrollY <= 0 || newScrollY >= maxScrollY) {
-            // Add subtle haptic feedback when hitting boundaries
-            // You can implement haptic feedback here if needed
-            logInfo("Scroll boundary reached");
-        }
-    }
-    
-    /**
-     * Scroll to top of the container
-     */
-    public void scrollToTop() {
-        smoothScrollTo(0);
-    }
-    
-    /**
-     * Scroll to bottom of the container
-     */
-    public void scrollToBottom() {
-        updateScrollBounds();
-        smoothScrollTo(maxScrollY);
-    }
-    
-    /**
-     * Scroll by a specific amount
-     */
-    public void scrollBy(int deltaY) {
-        onScroll(deltaY);
-    }
-    
-    /**
-     * Get current scroll position
-     */
-    public float getCurrentScrollPosition() {
-        return currentScrollY;
-    }
-    
-    /**
-     * Get maximum scroll position
-     */
-    public float getMaxScrollPosition() {
-        return maxScrollY;
-    }
-    
-    /**
-     * Check if content is scrollable
-     */
-    public boolean isScrollable() {
-        return maxScrollY > 0;
-    }
-    
-    private void handleIconClick(int id){
-        logInfo("thumbnail with id : " + Integer.toString(id) + " clicked");
-    }
-    
-    /**
-     * Updates the dimensions of the border container and its contents.
-     */
-    public void updateThumbnailContainerDimensions(int width, int height) {
-        ViewGroup.LayoutParams borderParams = borderContainer.getLayoutParams();
-        
-        if (borderParams != null) {
-            borderParams.width = width;
-            borderParams.height = height;
-            borderContainer.setLayoutParams(borderParams);
-            
-            if (height != ViewGroup.LayoutParams.MATCH_PARENT && 
-                height != ViewGroup.LayoutParams.WRAP_CONTENT) {
-                this.maxHeight = height;
-            }
-        } else {
-            ViewGroup.LayoutParams newParams = new ViewGroup.LayoutParams(width, height);
-            borderContainer.setLayoutParams(newParams);
-            
-            if (height != ViewGroup.LayoutParams.MATCH_PARENT && 
-                height != ViewGroup.LayoutParams.WRAP_CONTENT) {
-                this.maxHeight = height;
+
+                Handler handler = new Handler(Looper.getMainLooper());
+                handler.removeCallbacksAndMessages("momentum_scroll");
+                handler.postDelayed(() -> {
+                    if (isScrolling) {
+                        isScrolling = false;
+                        applyMomentumScroll(scrollVelocity);
+                    }
+                }, 100);
             }
         }
-        
-        borderContainer.requestLayout();
-        
-        // Update scroll bounds and clipping after dimensions change
-        borderContainer.post(() -> {
-            updateScrollBounds();
-            clipPathManager.updateClipping();
-        });
-    }
 
-    /**
-     * Updates the coordinates (margins) of the border container.
-     */
-    public void updateThumbnailContainerMargins(int left, int top, int right, int bottom) {
-        ViewGroup.LayoutParams currentParams = borderContainer.getLayoutParams();
-        
-        if (currentParams instanceof ViewGroup.MarginLayoutParams) {
-            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) currentParams;
-            params.setMargins(left, top, right, bottom);
-            borderContainer.setLayoutParams(params);
-        } else {
-            FrameLayout.LayoutParams newParams = new FrameLayout.LayoutParams(
-                    currentParams.width, 
-                    currentParams.height);
-            newParams.setMargins(left, top, right, bottom);
-            borderContainer.setLayoutParams(newParams);
-        }
-        
-        borderContainer.requestLayout();
-    }
+        private void applyMomentumScroll(float velocity) {
+            if (Math.abs(velocity) < MIN_SCROLL_VELOCITY)
+                return;
 
-    /**
-     * Updates the position of the border container using X and Y coordinates.
-     */
-    public void updateThumbnailContainerPosition(int x, int y) {
-        borderContainer.setX(x);
-        borderContainer.setY(y);
-    }
+            float decelerationDistance = (velocity * velocity) / (2 * SCROLL_FRICTION * 1000);
+            if (velocity < 0)
+                decelerationDistance = -decelerationDistance;
 
-    /**
-     * Updates both dimensions and position of the border container.
-     */
-    public void updateThumbnailContainerBounds(int x, int y, int width, int height) {
-        updateThumbnailContainerDimensions(width, height);
-        updateThumbnailContainerPosition(x, y);
-    }
-
-    /**
-     * Dynamically adjusts the height of the border container based on content
-     * without exceeding the maxHeight value.
-     */
-    public void adjustThumbnailContainerHeight() {
-        int contentHeight = calculateContentHeight();
-        int newHeight = Math.min(contentHeight, maxHeight);
-        
-        ViewGroup.LayoutParams layoutParams = borderContainer.getLayoutParams();
-        if (layoutParams != null) {
-            layoutParams.height = newHeight;
-            borderContainer.setLayoutParams(layoutParams);
-        }
-        
-        borderContainer.requestLayout();
-        
-        borderContainer.post(() -> {
-            updateScrollBounds();
-            clipPathManager.updateClipping();
-        });
-    }
-
-    /**
-     * Calculates the total height needed to display all thumbnails.
-     */
-    private int calculateContentHeight() {
-        int thumbnailSize = thumbnailRadius * 2;
-        int spacing = DEFAULT_SPACING;
-        int itemsPerRow = Math.max(1, maxWidth / (thumbnailSize + spacing));
-        int rowCount = (int) Math.ceil((double) thumbnails.size() / itemsPerRow);
-        
-        return rowCount * (thumbnailSize + spacing);
-    }
-
-    /**
-     * Updates the maximum height for the border container.
-     */
-    public void setMaxHeight(int maxHeight) {
-        this.maxHeight = maxHeight;
-        if (isDisplayed) {
-            adjustThumbnailContainerHeight();
+            float targetY = currentScrollY + decelerationDistance;
+            smoothScrollTo(targetY);
         }
     }
-    
-    private int computeMoveXOffset(){
-        return(int)(
-            - menuContext.normalizedBubbleX * maxWidth
-            - (menuContext.normalizedBubbleX * 2 - 1) * menuContext.bubbleSize
-            -  menuContext.bubbleSize / 10 * menuContext.normalizedBubbleX
-        );
-    }
-    
-    private int computeMoveYOffset(){
-        return(int)(
-            - menuContext.bubbleSize / 2
-        );
-    }
-    
-    public void onIconMove(){
-        updateThumbnailContainerPosition(
-            menuContext.roomSelectionX + computeMoveXOffset(),
-            menuContext.roomSelectionY + computeMoveYOffset()
-         );
-         setClipPathBasedOnNormalizedValue(
-            (float)Math.pow(Math.abs(menuContext.normalizedBubbleX*2-1), 4),
-            menuContext.roomSelectionX, 
-            menuContext.roomSelectionY
-         );
-    }
-    
-    // ClipPathManager integration methods (now applied to border container)
-    
-    public void applyRoundedRectangleClip(float cornerRadius) {
-        clipPathManager.applyRoundedRectangle(cornerRadius);
-    }
-    
-    public void applyCircularClip() {
-        clipPathManager.applyCircle();
-    }
-    
-    public void applyOvalClip() {
-        clipPathManager.applyOval();
-    }
-    
-    public void applyRoundedTopCornersClip(float cornerRadius) {
-        clipPathManager.applyRoundedTopCorners(cornerRadius);
-    }
-    
-    public void applyRoundedBottomCornersClip(float cornerRadius) {
-        clipPathManager.applyRoundedBottomCorners(cornerRadius);
-    }
-    
-    public void applyHexagonClip() {
-        clipPathManager.applyHexagon();
-    }
-    
-    public void applyTriangleClip() {
-        clipPathManager.applyTriangle();
-    }
-    
-    public void applyDiamondClip() {
-        clipPathManager.applyDiamond();
-    }
-    
-    public void applyCustomPathClip(Path path) {
-        clipPathManager.applyCustomPath(path);
-    }
-    
-    public void removeClipping() {
-        clipPathManager.removeClipping();
-    }
-    
-    public ClipPathManager.ClipType getCurrentClipType() {
-        return clipPathManager.getCurrentClipType();
-    }
-    
-    public ClipPathManager getClipPathManager() {
-        return clipPathManager;
+
+    private static class AnimationManager {
+        android.animation.ValueAnimator createRevealAnimation(float startValue, float endValue,
+                long duration, AnimationUpdateCallback callback) {
+            android.animation.ValueAnimator animator = android.animation.ValueAnimator.ofFloat(startValue, endValue);
+            animator.setDuration(duration);
+            animator.setInterpolator(new android.view.animation.DecelerateInterpolator());
+            animator.addUpdateListener(animation -> callback.onUpdate((float) animation.getAnimatedValue()));
+            return animator;
+        }
+
+        interface AnimationUpdateCallback {
+            void onUpdate(float progress);
+        }
     }
 
-    /**
-     * Get reference to the border container for direct styling access
-     */
-    public FrameLayout getBorderContainer() {
-        return borderContainer;
-    }
+    private static class ClippingCalculator {
+        private final int offsetX;
+        private final int offsetY;
+        private final int relativeX;
+        private final int relativeY;
+        private final int containerWidth;
+        private final int containerHeight;
+        private final float maxRadius;
 
-    /**
-     * Get reference to the scroll view for direct access
-     */
-    public ScrollView getScrollView() {
-        return scrollView;
-    }
+        ClippingCalculator(ViewGroup parentContainer, FrameLayout borderContainer,
+                int absoluteX, int absoluteY) {
+            int[] parentLocation = new int[2];
+            int[] borderLocation = new int[2];
+            parentContainer.getLocationOnScreen(parentLocation);
+            borderContainer.getLocationOnScreen(borderLocation);
 
-    /**
-     * Get reference to the thumbnail container for direct access
-     */
-    public FlexboxLayout getThumbnailContainer() {
-        return thumbnailContainer;
+            this.offsetX = borderLocation[0] - parentLocation[0];
+            this.offsetY = borderLocation[1] - parentLocation[1];
+            this.relativeX = absoluteX - offsetX;
+            this.relativeY = absoluteY - offsetY;
+            this.containerWidth = borderContainer.getWidth();
+            this.containerHeight = borderContainer.getHeight();
+            this.maxRadius = calculateMaxRadius();
+        }
+
+        private float calculateMaxRadius() {
+            float dTL = (float) Math.hypot(relativeX, relativeY);
+            float dTR = (float) Math.hypot(containerWidth - relativeX, relativeY);
+            float dBL = (float) Math.hypot(relativeX, containerHeight - relativeY);
+            float dBR = (float) Math.hypot(containerWidth - relativeX, containerHeight - relativeY);
+            return Math.max(Math.max(dTL, dTR), Math.max(dBL, dBR));
+        }
+
+        void applyCircularClip(ClipPathManager clipManager, float progress) {
+            float currentRadius = Math.max(1f, progress * maxRadius);
+
+            clipManager.removeClipping();
+            clipManager.setCoords(
+                    relativeX - currentRadius,
+                    relativeY - currentRadius,
+                    relativeX + currentRadius,
+                    relativeY + currentRadius);
+            clipManager.applyCircle();
+        }
     }
 }
