@@ -15,6 +15,8 @@ import com.walter.DraggableDot;
 import com.walter.UdpLogger;
 import com.walter.HapticFeedbackManager;
 import com.walter.ContextMenuContext;
+import org.json.JSONObject;
+import org.json.JSONException;
 
 public class BrightnessComponent {
     private Context ctx;
@@ -421,8 +423,14 @@ public class BrightnessComponent {
         float normalizedValue = Math.max(0f, Math.min(1f, value));
         
         // Log the brightness value
-        logInfo("Brightness set to: " + normalizedValue);
-        
+        try {
+            JSONObject json = new JSONObject();
+            json.put("brightness", Math.round(normalizedValue * 255));
+            menuContext.postToServer(json);
+        } catch (JSONException e) {
+            e.printStackTrace(); // ou log propre
+            // Optionnel : envoyer un fallback / log vers ton serveur / show toast
+        }
         // Store the value
         setValue(normalizedValue);
         

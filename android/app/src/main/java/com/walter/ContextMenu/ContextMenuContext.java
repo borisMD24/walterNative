@@ -8,6 +8,11 @@ import android.content.Context;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.function.Consumer;
+import com.walter.WsContextMenuBind;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 public class ContextMenuContext {
     public int nthOppened = -1;
     private Consumer<Integer> onCloseCallback = null;
@@ -25,11 +30,14 @@ public class ContextMenuContext {
     protected int roomSelectionY;
     protected int themeSelectionX;
     protected int themeSelectionY;
+    protected WsContextMenuBind ws;
     private Context ctx;
+    protected int currentRoomId = 0;
     ContextMenuContext(Context ctx) {
         this.ctx = ctx;
         setScreenHeight();
         setScreenWidth();
+        ws = new WsContextMenuBind();
     }
     
     public void oppened(int nth, Consumer<Integer> onClose) {
@@ -133,5 +141,19 @@ public class ContextMenuContext {
     public void setThemeSelectionCoords(int x, int y){
         this.themeSelectionX = x;
         this.themeSelectionY = y;
+    }
+    public void postToServer(JSONObject data){
+        try {
+            JSONObject json = new JSONObject();
+            json.put("payload", data);
+            json.put("roomID", currentRoomId);
+            ws.sendToRoom(json);
+        } catch (JSONException e) {
+            e.printStackTrace(); // ou log propre
+            // Optionnel : envoyer un fallback / log vers ton serveur / show toast
+        }
+    }
+    public void setRoomId(int id){
+        this.currentRoomId = id;
     }
 }

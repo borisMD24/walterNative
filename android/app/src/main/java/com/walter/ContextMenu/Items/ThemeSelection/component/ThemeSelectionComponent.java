@@ -23,11 +23,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A component that displays a scrollable grid of room thumbnails with smooth
+ * A component that displays a scrollable grid of theme thumbnails with smooth
  * animations
  * and customizable clipping paths.
  */
-public class RoomSelectionComponent {
+public class ThemeSelectionComponent {
 
     // Configuration Constants
     private static final int DEFAULT_THUMBNAIL_SIZE = 100;
@@ -63,7 +63,7 @@ public class RoomSelectionComponent {
     // Logger
     private static UdpLogger logger;
 
-    public RoomSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
+    public ThemeSelectionComponent(Context context, ViewGroup container, ContextMenuContext menuContext) {
         this.context = context;
         this.parentContainer = container;
         this.menuContext = menuContext;
@@ -146,12 +146,12 @@ public class RoomSelectionComponent {
             return;
 
         addToParentContainer();
-        loadAndDisplayRooms();
+        loadAndDisplaythemes();
         animateIn();
         resetScrollPosition();
 
         isDisplayed = true;
-        logInfo("Room selection displayed at: " + menuContext.roomSelectionX + "," + menuContext.roomSelectionY);
+        logInfo("theme selection displayed at: " + menuContext.themeSelectionX + "," + menuContext.themeSelectionY);
     }
 
     public void hide() {
@@ -290,6 +290,10 @@ public class RoomSelectionComponent {
                     ViewGroup.LayoutParams.MATCH_PARENT));
         }
         updateDimensions(maxWidth, ViewGroup.LayoutParams.WRAP_CONTENT);
+
+        // Set initial position to match onIconMove positioning
+        borderContainer.post(this::updatePosition);
+
         styleManager.applyDefaultStyle();
     }
 
@@ -297,18 +301,18 @@ public class RoomSelectionComponent {
         parentContainer.removeView(borderContainer);
     }
 
-    private void loadAndDisplayRooms() {
+    private void loadAndDisplaythemes() {
         clearThumbnails();
-        List<Room> rooms = RoomDataParser.parseRoomsFromJson();
+        List<Room> rooms = themeDataParser.parsethemesFromJson();
         createThumbnails(rooms);
         scheduleHeightAdjustment();
     }
 
-    private void createThumbnails(List<Room> rooms) {
+    private void createThumbnails(List<Room> themes) {
         int thumbnailSize = thumbnailRadius * 2;
         int spacing = DEFAULT_SPACING;
 
-        for (Room room : rooms) {
+        for (Room room : themes) {
             FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(thumbnailSize, thumbnailSize);
             params.setMargins(spacing / 2, spacing / 2, spacing / 2, spacing / 2);
 
@@ -370,20 +374,20 @@ public class RoomSelectionComponent {
     private void animateIn() {
         setInitialClipState();
         animationManager.createRevealAnimation(0f, 1f, ANIMATION_DURATION,
-                progress -> updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY))
+                progress -> updateClippingForReveal(progress, menuContext.themeSelectionX, menuContext.themeSelectionY))
                 .start();
     }
 
     private void animateOut(Runnable onComplete) {
         animationManager.createRevealAnimation(1f, 0f, ANIMATION_DURATION,
-                progress -> updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY))
+                progress -> updateClippingForReveal(progress, menuContext.themeSelectionX, menuContext.themeSelectionY))
                 .start();
 
         new Handler(Looper.getMainLooper()).postDelayed(onComplete, ANIMATION_DURATION);
     }
 
     private void setInitialClipState() {
-        updateClippingForReveal(0f, menuContext.roomSelectionX, menuContext.roomSelectionY);
+        updateClippingForReveal(0f, menuContext.themeSelectionX, menuContext.themeSelectionY);
     }
 
     private void updateClippingForReveal(float progress, int absoluteX, int absoluteY) {
@@ -394,12 +398,12 @@ public class RoomSelectionComponent {
 
     private void updateClippingForMovement() {
         float progress = (float) Math.pow(Math.abs(menuContext.normalizedBubbleX * 2 - 1), 4);
-        updateClippingForReveal(progress, menuContext.roomSelectionX, menuContext.roomSelectionY);
+        updateClippingForReveal(progress, menuContext.themeSelectionX, menuContext.themeSelectionY);
     }
 
     private void updatePosition() {
-        int x = menuContext.roomSelectionX + computeMoveXOffset();
-        int y = menuContext.roomSelectionY + computeMoveYOffset();
+        int x = menuContext.themeSelectionX + computeMoveXOffset();
+        int y = menuContext.themeSelectionY + computeMoveYOffset();
         updatePosition(x, y);
     }
 
@@ -409,8 +413,29 @@ public class RoomSelectionComponent {
                 - menuContext.bubbleSize / 10 * menuContext.normalizedBubbleX);
     }
 
+    // Alternative implementation with more sophisticated positioning logic:
+    private int computeMoveYOffsetAdvanced() {
+        int containerHeight = borderContainer.getHeight();
+
+        // If container hasn't been measured yet, fall back to maxHeight
+        if (containerHeight <= 0) {
+            containerHeight = maxHeight;
+        }
+
+        // Consider bubble position for better positioning
+        float bubbleYFactor = menuContext.normalizedBubbleY; // Assuming this exists
+
+        return (int) (menuContext.bubbleSize / 2
+                - containerHeight
+                + (bubbleYFactor * menuContext.bubbleSize) // Adjust based on bubble Y position
+        );
+    }
+
+    // Simple fix - just replace maxHeight with actual container height:
     private int computeMoveYOffset() {
-        return (int) (-menuContext.bubbleSize / 2);
+        return (int) (menuContext.bubbleSize / 2
+                - borderContainer.getHeight() // Use actual container height
+        );
     }
 
     private void resetScrollPosition() {
@@ -419,15 +444,7 @@ public class RoomSelectionComponent {
     }
 
     private void handleThumbnailClick(int id) {
-        menuContext.setRoomId(id);
-        try {
-            JSONObject json = new JSONObject();
-            json.put("room", id);
-            menuContext.ws.sendToRoom(json);
-        } catch (JSONException e) {
-            e.printStackTrace(); // ou log propre
-            // Optionnel : envoyer un fallback / log vers ton serveur / show toast
-        }
+        logInfo("Thumbnail clicked: " + id);
     }
 
     private void onScrollPositionChanged() {
@@ -469,24 +486,24 @@ public class RoomSelectionComponent {
         }
     }
 
-    private static class RoomDataParser {
-        static List<Room> parseRoomsFromJson() {
-            List<Room> rooms = new ArrayList<>();
+    private static class themeDataParser {
+        static List<Room> parsethemesFromJson() {
+            List<Room> themes = new ArrayList<>();
             try {
                 JSONObject jsonObject = new JSONObject(GetJson.get());
-                JSONArray jsonRooms = jsonObject.getJSONArray("rooms");
+                JSONArray jsonthemes = jsonObject.getJSONArray("rooms");
 
-                for (int i = 0; i < jsonRooms.length(); i++) {
-                    JSONObject room = jsonRooms.getJSONObject(i);
-                    rooms.add(new Room(
-                            room.getString("name"),
-                            room.getInt("id"),
-                            room.getString("img")));
+                for (int i = 0; i < jsonthemes.length(); i++) {
+                    JSONObject theme = jsonthemes.getJSONObject(i);
+                    themes.add(new Room(
+                            theme.getString("name"),
+                            theme.getInt("id"),
+                            theme.getString("img")));
                 }
             } catch (JSONException e) {
                 e.printStackTrace();
             }
-            return rooms;
+            return themes;
         }
     }
 
