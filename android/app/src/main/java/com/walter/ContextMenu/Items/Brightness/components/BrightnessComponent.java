@@ -59,6 +59,7 @@ public class BrightnessComponent {
             this.dot.setNormalizedX();
             rotateWithNormalizedX();
         });
+
         // Initialize HapticFeedbackManager early
         this.hfm = new HapticFeedbackManager(ctx);
 
@@ -74,11 +75,14 @@ public class BrightnessComponent {
         arcView.setLayoutParams(params);
 
         // Don't show the view immediately - it's invisible by default
+        initializeLogger();
         this.dot = new DraggableDot(ctx, parent, this);
-        
+        this.menuContext.onBrightnessChange(()->{
+            this.dot.setPosition(this.menuContext.brightness);
+            logInfo("from BCPNT : " + this.menuContext.brightness);
+        });
         // Initialize the sweep animator
         initSweepAnimator();
-        initializeLogger();
     }
     
     private void initializeLogger() {
@@ -423,15 +427,15 @@ public class BrightnessComponent {
         float normalizedValue = Math.max(0f, Math.min(1f, value));
         
         // Log the brightness value
-        try {
-            JSONObject json = new JSONObject();
-            json.put("brightness", Math.round(normalizedValue * 255));
-            menuContext.postToServer(json);
-        } catch (JSONException e) {
-            e.printStackTrace(); // ou log propre
-            // Optionnel : envoyer un fallback / log vers ton serveur / show toast
+         if (!menuContext.isSettingBrightnessFromServer) {
+            try {
+                JSONObject json = new JSONObject();
+                json.put("brightness", Math.round(normalizedValue * 255));
+                menuContext.postToServer(json);
+            } catch (JSONException e) {
+                e.printStackTrace();
+            }
         }
-        // Store the value
         setValue(normalizedValue);
         
         // Apply haptic feedback based on the brightness level

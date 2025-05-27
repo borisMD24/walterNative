@@ -9,6 +9,8 @@ import okio.ByteString;
 import android.util.Log;
 import org.json.JSONObject;
 import org.json.JSONException;
+import java.util.function.Consumer;
+
 
 public class WsContextMenuBind extends WebSocketListener {
     private static final String TAG = "WsContextMenuBind";
@@ -17,6 +19,7 @@ public class WsContextMenuBind extends WebSocketListener {
     private boolean isConnected = false;
     protected String room = "floatingBubble";
     private ContextMenuContext menuContext;
+    private Consumer<String> msgCallback;
     public WsContextMenuBind() {
         initWebSocket();
     }
@@ -54,6 +57,10 @@ public class WsContextMenuBind extends WebSocketListener {
         Log.d(TAG, "Received bytes: " + bytes.hex());
 
         // Handle binary messages if needed
+    }
+
+    public void onMessage(Consumer<String> cb){
+        this.msgCallback = cb;
     }
 
     @Override
@@ -144,6 +151,9 @@ public class WsContextMenuBind extends WebSocketListener {
         // Default implementation - just log the message
         // Override this in subclass or modify as needed for your context menu logic
         Log.d(TAG, "Handling message: " + message);
+        if (this.msgCallback != null) {
+            this.msgCallback.accept(message);
+        }
     }
 
     // Check connection status
