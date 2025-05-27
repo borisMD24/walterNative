@@ -2,7 +2,7 @@ package com.walter;
 import android.view.ViewGroup;
 import android.content.Context;
 import com.walter.ContextMenuItem; 
-import com.walter.ThemeSelectionComponents;
+import com.walter.ThemeSelectionComponent;
 
 import androidx.core.app.NotificationCompat;
 import android.widget.Toast;
@@ -10,10 +10,10 @@ import com.walter.ContextMenuContext;
 
 public class ThemeSelection extends ContextMenuItem {
     private boolean oppened = false;
-    private ThemeSelectionComponents roomSelectionCmpnt;
+    private ThemeSelectionComponent roomSelectionCmpnt;
     ThemeSelection(Context ctx, ViewGroup parent, int nth, ContextMenuContext menuContext){
         super(ctx, parent, nth, menuContext);
-        roomSelectionCmpnt = new ThemeSelectionComponents(ctx, parent, menuContext);
+        roomSelectionCmpnt = new ThemeSelectionComponent(ctx, parent, menuContext);
         this.setMoveCallback((x, y) -> {
             menuContext.setThemeSelectionCoords(x + menuContext.bubbleSize / 2, y + menuContext.bubbleSize / 2);
             this.roomSelectionCmpnt.onIconMove();
