@@ -20,11 +20,12 @@ public class WsContextMenuBind extends WebSocketListener {
     protected String room = "floatingBubble";
     private ContextMenuContext menuContext;
     private Consumer<String> msgCallback;
+    private Consumer<String> closedCallback;
     public WsContextMenuBind() {
         initWebSocket();
     }
 
-    private void initWebSocket() {
+    public void initWebSocket() {
         client = new OkHttpClient();
         Request request = new Request.Builder()
                 .url("ws://192.168.1.18:3000/")
@@ -62,6 +63,9 @@ public class WsContextMenuBind extends WebSocketListener {
     public void onMessage(Consumer<String> cb){
         this.msgCallback = cb;
     }
+    public void onClosed(Consumer<String> cb){
+        this.closedCallback = cb;
+    }
 
     @Override
     public void onClosing(WebSocket webSocket, int code, String reason) {
@@ -76,6 +80,9 @@ public class WsContextMenuBind extends WebSocketListener {
         super.onClosed(webSocket, code, reason);
         Log.d(TAG, "WebSocket closed: " + code + " / " + reason);
         isConnected = false;
+        if (this.closedCallback != null) {
+            this.closedCallback.accept("");
+        }
     }
 
     @Override

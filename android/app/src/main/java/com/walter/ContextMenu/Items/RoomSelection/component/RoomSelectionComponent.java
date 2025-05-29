@@ -88,6 +88,8 @@ public class RoomSelectionComponent {
         borderContainer = new FrameLayout(context);
         scrollView = new ScrollView(context);
         thumbnailContainer = new FlexboxLayout(context);
+        thumbnailContainer.setClipChildren(false);
+        thumbnailContainer.setClipToPadding(false);
     }
 
     private void initializeManagers() {
@@ -110,6 +112,7 @@ public class RoomSelectionComponent {
         thumbnailContainer.setFlexWrap(FlexWrap.WRAP);
         thumbnailContainer.setJustifyContent(JustifyContent.CENTER);
         thumbnailContainer.setBackgroundColor(Color.TRANSPARENT);
+
     }
 
     private void configureScrollView() {
@@ -325,7 +328,8 @@ public class RoomSelectionComponent {
                     thumbnailRadius / 2,
                     room.img,
                     thumbnailContainer,
-                    params);
+                    params,
+                    menuContext);
             thumbnail.name = room.name;
             thumbnail.updateNameLabel();
             thumbnail.setDragCallback(scrollManager::onScroll);

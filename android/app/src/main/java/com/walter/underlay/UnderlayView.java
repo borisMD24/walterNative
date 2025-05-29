@@ -35,7 +35,6 @@ public class UnderlayView {
     private final Context context;
     private final WindowManager windowManager;
     private FrameLayout rootLayout;
-    private TextView coordinateIndicator;
     
     private WindowManager.LayoutParams params;
     private OnUnderlayTouchListener touchListener;
@@ -48,6 +47,7 @@ public class UnderlayView {
     public int bubbleSize;
     public boolean isFirstShow = true;
     public boolean isClickable = false;
+    private Runnable onCloseCallback = null;
     private Consumer<Boolean> setClicked = (clicked) -> {
         Log.d("FloatingBubble", "Clicked = " + clicked);
     };
@@ -59,6 +59,10 @@ public class UnderlayView {
         void onUnderlayTouch();
     }
     
+    public void onClose(Runnable cb){
+        onCloseCallback = cb;
+    }
+
     public void setSetClicked(Consumer<Boolean> setClicked) {
         this.setClicked = setClicked;
     }
@@ -80,7 +84,9 @@ public class UnderlayView {
         
         this.contextMenu = new ContextMenuView(context, this.rootLayout);
     }
-    
+    public void setExpandedBubbleSize(int size){
+        this.contextMenu.menuContext.setExpandedBubbleSize(size);
+    }
     /**
      * Shows the underlay with default settings, making it click-transparent
      */
@@ -104,21 +110,12 @@ public class UnderlayView {
             // Create a full-screen root layout
             rootLayout = new FrameLayout(context);
             rootLayout.setBackgroundColor(backgroundColor);
-            
-            // Create coordinate indicator
-            coordinateIndicator = new TextView(context);
-            coordinateIndicator.setTextColor(Color.WHITE);
-            coordinateIndicator.setBackgroundColor(Color.argb(150, 0, 0, 0));
-            coordinateIndicator.setPadding(20, 10, 20, 10);
-            coordinateIndicator.setText(String.format("X: %d, Y: %d", x, y));
-            
             // Add the text view to the center of the layout
             FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
                 LayoutParams.WRAP_CONTENT,
                 LayoutParams.WRAP_CONTENT
             );
             textParams.gravity = Gravity.CENTER;
-            rootLayout.addView(coordinateIndicator, textParams);
             
             // Configure window layout parameters - initially click-transparent
             params = new WindowManager.LayoutParams(
@@ -152,9 +149,6 @@ public class UnderlayView {
             
             // Add the view to window
             windowManager.addView(rootLayout, params);
-            
-            // Update the indicator with initial coordinates
-            updateCoordinateIndicator();
             isVisible = true;
             Log.d(TAG, "Underlay view displayed (click-transparent)");
             this.contextMenu = new ContextMenuView(this.context, rootLayout);
@@ -209,7 +203,7 @@ public class UnderlayView {
         
         // Change background color based on clickability
         if (rootLayout != null) {
-            rootLayout.setBackgroundColor(clickable ? CLICKABLE_BACKGROUND_COLOR : DEFAULT_BACKGROUND_COLOR);
+            rootLayout.setBackgroundColor(DEFAULT_BACKGROUND_COLOR);
             rootLayout.setClickable(clickable);
             rootLayout.setFocusable(clickable);
         }
@@ -224,8 +218,8 @@ public class UnderlayView {
     }
     
     public void makeUnclickable() {
-        Log.d(TAG, "Making underlay unclickable");
         setClickable(false);
+        onCloseCallback.run();
         contextMenu.hide();
     }
 
@@ -266,21 +260,12 @@ public class UnderlayView {
     public void setCoords(int x, int y) {
         this.x = x;
         this.y = y;
-        updateCoordinateIndicator();
         
         // When first shown, use showAtPosition for animation
         // For subsequent updates, use regular setCoords
         contextMenu.setCoords(x, y);
     }
     
-    /**
-     * Updates the text in the coordinate indicator
-     */
-    private void updateCoordinateIndicator() {
-        if (coordinateIndicator != null) {
-            coordinateIndicator.setText(String.format("X: %d, Y: %d", x, y));
-        }
-    }
     
     ViewParent getParent() {
         return this.rootLayout != null ? this.rootLayout.getParent() : null;
@@ -298,7 +283,6 @@ public class UnderlayView {
                     Log.d(TAG, "Underlay view removed from window");
                 }
                 rootLayout = null;
-                coordinateIndicator = null;
                 Log.d(TAG, "Underlay view hidden");
                 isVisible = false;
                 return true;

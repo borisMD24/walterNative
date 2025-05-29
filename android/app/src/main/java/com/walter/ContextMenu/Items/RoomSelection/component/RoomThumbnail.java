@@ -18,6 +18,7 @@ import com.bumptech.glide.load.resource.bitmap.CircleCrop;
 import com.bumptech.glide.request.RequestOptions;
 import com.google.android.flexbox.FlexboxLayout;
 import java.util.function.Consumer;
+import com.walter.ContextMenuContext;
 
 public class RoomThumbnail extends LinearLayout {
     private final ImageView imageView;
@@ -28,14 +29,17 @@ public class RoomThumbnail extends LinearLayout {
     public String name;
     private Consumer<Integer> onDrag = null;
     private Consumer<Integer> onClick = null;
+    private ContextMenuContext menuContext;
     
     public RoomThumbnail(Context context,
                          int id,
                          int radiusDp,
                          String imageUrl,
                          ViewGroup parentContainer,
-                         FlexboxLayout.LayoutParams layoutParams) {
+                         FlexboxLayout.LayoutParams layoutParams,
+                         ContextMenuContext menuContext) {
         super(context);
+        this.menuContext = menuContext;
         validateInputs(id, radiusDp, parentContainer);
         this.id = id;
         this.radiusPx = dpToPx(radiusDp, context);
@@ -46,23 +50,59 @@ public class RoomThumbnail extends LinearLayout {
         this.nameLabel = createNameLabel();
         loadImage();
         setupDragListener();
+        
+        this.menuContext.onCurrentRoomUpdate(()->{
+            this.activeHandler();
+        });
+        this.activeHandler();
+    }
+    
+    private void activeHandler(){
+        if(this.id == menuContext.currentRoomId){
+            menuContext.logInfo("success from " + this.id);
+            this.setActive();
+        } else {
+            this.setInctive();
+        }
     }
 
-    public RoomThumbnail(Context context,
-                         int id,
-                         int radiusDp,
-                         String imageUrl,
-                         ViewGroup parentContainer,
-                         String name) {
-        this(context, id, radiusDp, imageUrl, parentContainer,
-            new FlexboxLayout.LayoutParams(
-                dpToPx(radiusDp, context) * 2,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ));
-        this.name = name;
-        updateNameLabel();
+    // public RoomThumbnail(Context context,
+    //                      int id,
+    //                      int radiusDp,
+    //                      String imageUrl,
+    //                      ViewGroup parentContainer,
+    //                      String name) {
+    //     this(context, id, radiusDp, imageUrl, parentContainer,
+    //         new FlexboxLayout.LayoutParams(
+    //             dpToPx(radiusDp, context) * 2,
+    //             ViewGroup.LayoutParams.WRAP_CONTENT
+    //         ));
+    //     this.name = name;
+    //     updateNameLabel();
+    // }
+    
+    private void setActive(){
+        if(nameLabel != null){
+            setLabelTextColor(Color.parseColor("#000000"));
+            nameLabel.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            imageView.animate()
+                .scaleX(1.15f)
+                .scaleY(1.15f)
+                .setDuration(200)
+                .start();
+        }
     }
-
+    private void setInctive(){
+        if(nameLabel != null){
+            setLabelTextColor(Color.parseColor("#787878"));
+            nameLabel.setTypeface(Typeface.DEFAULT, Typeface.ITALIC);
+            imageView.animate()
+                .scaleX(0.9f)
+                .scaleY(0.9f)
+                .setDuration(200)
+                .start();
+        }
+    }
     private void validateInputs(int id, int radiusDp, ViewGroup parent) {
         if (radiusDp <= 0) throw new IllegalArgumentException("Radius must be positive");
         if (parent == null) throw new IllegalArgumentException("Parent cannot be null");
@@ -185,7 +225,6 @@ public class RoomThumbnail extends LinearLayout {
             .load(imageUrl)
             .apply(new RequestOptions()
                 .override(radiusPx * 2, radiusPx * 2)
-                .transform(new CircleCrop())
                 .placeholder(R.drawable.kitchen)
                 .error(R.drawable.bedroom))
             .into(imageView);

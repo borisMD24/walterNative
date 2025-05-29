@@ -18,7 +18,7 @@ public class RoomSelection extends ContextMenuItem {
             menuContext.setRoomSelectionCoords(x + menuContext.bubbleSize/2, y + menuContext.bubbleSize/2);
             this.roomSelectionCmpnt.onIconMove();
         });
-        this.setIconID(R.drawable.kitchen);
+        this.setIconID(R.drawable.room);
     }
     @Override
 public void click() {

@@ -12,7 +12,6 @@ public class ContextMenuView {
     public int x;
     public int y;
     private final Context context;
-    private final TextView coordsText;
     private int bubbleSize;
     private final ContextMenuItem[] items;
     private boolean isFirstShow = true;
@@ -26,14 +25,6 @@ public class ContextMenuView {
         items[1] = new Brightness(context, underlay, 1, menuContext);
         items[2] = new RoomSelection(context, underlay, 2, menuContext);
         
-        // Initialize coordinate display
-        coordsText = new TextView(this.context);
-        coordsText.setTextColor(0xFFFFFFFF);
-        coordsText.setBackgroundColor(0x88000000);
-        coordsText.setPadding(20, 10, 20, 10);
-        coordsText.setTextSize(16);
-        coordsText.setGravity(Gravity.CENTER);
-        
         FrameLayout.LayoutParams textParams = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
@@ -45,7 +36,6 @@ public class ContextMenuView {
         }
         
         FrameLayout frame = (FrameLayout) underlay;
-        frame.addView(coordsText, textParams);
         
         // Set initial coordinates without animation
         setCoords(0, 0);
@@ -58,15 +48,7 @@ public class ContextMenuView {
     public void setCoords(int x, int y) {
         menuContext.setBubbleCoords(x, y);
         // When first showing, we'll animate via showAtPosition instead
-    
-        // Update coordinates text
-        coordsText.post(() -> {
-            float halfTW = coordsText.getWidth() / 2f;
-            coordsText.setX(x - halfTW);
-            coordsText.setY(y + 10);
-        });
         
-        updateDisplay();
     }
     
     /**
@@ -81,24 +63,9 @@ public class ContextMenuView {
         for (ContextMenuItem item : items) {
             item.startAnim();
         }
-        
-        // Update coordinates text
-        coordsText.post(() -> {
-            float halfTW = coordsText.getWidth() / 2f;
-            coordsText.setX(x - halfTW);
-            coordsText.setY(y + 10);
-        });
-        
-        updateDisplay();
         isFirstShow = false;
     }
     
-    /**
-     * Updates the coordinates display text
-     */
-    private void updateDisplay() {
-        coordsText.setText("X: " + x + " | Y: " + y);
-    }
     public void show(){
         for (int i = 0; i < 3; i++) {
             items[i].startAnim();

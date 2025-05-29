@@ -21,6 +21,8 @@ import java.io.InputStreamReader;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class ContextMenuContext {
     public int nthOppened = -1;
@@ -54,6 +56,7 @@ public class ContextMenuContext {
     protected List<Theme> themeList;
     private final String configFile = "contextMenuContext.json";
     protected int currentThemeId = 0;
+    protected int expandedBubbleSize;
     ContextMenuContext(Context ctx) {
         this.ctx = ctx;
         setScreenHeight();
@@ -78,7 +81,14 @@ public class ContextMenuContext {
             logInfo("Erreur lecture config : " + e.getMessage());
         }
         handleMessage(data, true);
-
+        ws.onClosed((msg) -> {
+            new Timer().schedule(new TimerTask() {
+                @Override
+                public void run() {
+                    ws.reconnect();
+                }
+            }, 1000); // 1000 ms = 1 seconde
+        });
     }
 
     private void initializeLogger() {
@@ -246,7 +256,9 @@ public class ContextMenuContext {
         this.themeSelectionX = x;
         this.themeSelectionY = y;
     }
-
+    public void setExpandedBubbleSize(int s){
+        expandedBubbleSize = s;
+    }
     public void onCurrentRoomUpdate(Runnable cb){
         onCurrentRoomUpdateCallbacks.add(cb);
     }

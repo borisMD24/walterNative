@@ -35,10 +35,7 @@ import com.walter.ContextMenuContext;
 import java.util.function.BiConsumer;
 
 public class ContextMenuItem {
-    private static final String TAG = "ContextMenuItem";
     private static final int ANIMATION_DURATION = 300;
-    private static final String CHANNEL_ID = "context_menu_channel";
-    private static final int NOTIFICATION_ID = 1001;
     
     public final Context ctx;
     public final int nth;
@@ -79,12 +76,12 @@ public class ContextMenuItem {
         iconImageView.setImageResource(iconID);
         
         FrameLayout.LayoutParams imageParams = new FrameLayout.LayoutParams(
-            menuContext.bubbleSize / 2, menuContext.bubbleSize / 2
+            menuContext.expandedBubbleSize / 2, menuContext.expandedBubbleSize / 2
         );
         imageParams.gravity = android.view.Gravity.CENTER;
         
         containerView.addView(blueCircle, new FrameLayout.LayoutParams(
-            menuContext.bubbleSize, menuContext.bubbleSize
+            menuContext.expandedBubbleSize, menuContext.expandedBubbleSize
         ));
         containerView.addView(iconImageView, imageParams);
 
@@ -99,7 +96,7 @@ public class ContextMenuItem {
         }
 
         ViewGroup.LayoutParams params = new ViewGroup.LayoutParams(
-            menuContext.bubbleSize, menuContext.bubbleSize
+            menuContext.expandedBubbleSize, menuContext.expandedBubbleSize
         );
 
         parent.addView(containerView, params);
@@ -123,18 +120,18 @@ public class ContextMenuItem {
     
     public void onBubbleResize() {
         ViewGroup.LayoutParams containerParams = containerView.getLayoutParams();
-        containerParams.width = menuContext.bubbleSize;
-        containerParams.height = menuContext.bubbleSize;
+        containerParams.width = menuContext.expandedBubbleSize;
+        containerParams.height = menuContext.expandedBubbleSize;
         containerView.setLayoutParams(containerParams);
         
         ViewGroup.LayoutParams circleParams = blueCircle.getLayoutParams();
-        circleParams.width = menuContext.bubbleSize;
-        circleParams.height = menuContext.bubbleSize;
+        circleParams.width = menuContext.expandedBubbleSize;
+        circleParams.height = menuContext.expandedBubbleSize;
         blueCircle.setLayoutParams(circleParams);
         
         FrameLayout.LayoutParams imageParams = (FrameLayout.LayoutParams) iconImageView.getLayoutParams();
-        imageParams.width = menuContext.bubbleSize / 2;
-        imageParams.height = menuContext.bubbleSize / 2;
+        imageParams.width = menuContext.expandedBubbleSize / 2;
+        imageParams.height = menuContext.expandedBubbleSize / 2;
         iconImageView.setLayoutParams(imageParams);
     }
     
@@ -143,10 +140,10 @@ public class ContextMenuItem {
         float normalXN1To1 = map01toNeg1To1(normalX);
         
         CoordinateConverter cc = new CoordinateConverter();
-        int radius = Math.max(150, menuContext.bubbleSize);
+        int radius = menuContext.expandedBubbleSize;
         
         CoordinateConverter.Polar computedRotation = new CoordinateConverter.Polar(
-            Math.abs(normalXN1To1) * menuContext.bubbleSize * 1.5, 
+            Math.abs(normalXN1To1) * menuContext.expandedBubbleSize * 1.5, 
             ((this.nth-1) * (normalXN1To1 * (Math.PI/3))) + Math.abs(normalX * Math.PI)
         );
         Cartesian r = cc.polarToCartesian(computedRotation);
@@ -156,7 +153,7 @@ public class ContextMenuItem {
     
     public void setCoords() {
         Cartesian offset = calculateTargetPosition();
-        float circleRadius = menuContext.bubbleSize / 2f;
+        float circleRadius = menuContext.expandedBubbleSize / 2f;
         int targetX = (int) (menuContext.bubbleX + offset.x - circleRadius);
         int targetY = (int) (menuContext.bubbleY - offset.y - circleRadius);
         
@@ -187,7 +184,7 @@ public class ContextMenuItem {
         cancelCurrentAnimation();
         
         Cartesian offset = calculateTargetPosition();
-        float circleRadius = menuContext.bubbleSize / 2f;
+        float circleRadius = menuContext.expandedBubbleSize / 2f;
         
         final int startX = menuContext.bubbleX - (int)circleRadius;
         final int startY = menuContext.bubbleY - (int)circleRadius;
@@ -231,7 +228,7 @@ public class ContextMenuItem {
         cancelCurrentAnimation();
         if (containerView == null || containerView.getParent() == null || containerView.getAlpha() == 0f) return;
         
-        float circleRadius = menuContext.bubbleSize / 2f;
+        float circleRadius = menuContext.expandedBubbleSize / 2f;
         final float startX = containerView.getX();
         final float startY = containerView.getY();
         final float endX = menuContext.bubbleX - circleRadius;
@@ -276,8 +273,8 @@ public class ContextMenuItem {
         DisplayMetrics dm = new DisplayMetrics();
         wm.getDefaultDisplay().getMetrics(dm);
         float screenWidth = dm.widthPixels;
-        float minX = menuContext.bubbleSize;
-        float maxX = screenWidth - menuContext.bubbleSize;
+        float minX = menuContext.expandedBubbleSize;
+        float maxX = screenWidth - menuContext.expandedBubbleSize;
         float clampedX = Math.max(minX, Math.min(menuContext.bubbleX, maxX));
         return (clampedX - minX) / (maxX - minX);
     }
