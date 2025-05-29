@@ -22,6 +22,8 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.walter.json.Room;
+
 /**
  * A component that displays a scrollable grid of room thumbnails with smooth
  * animations
@@ -75,6 +77,11 @@ public class RoomSelectionComponent {
         initializeManagers();
         setupLayout();
         initializeLogger();
+        menuContext.onRoomsUpdate(()->{
+            //kk
+            this.clearThumbnails();
+            this.loadAndDisplayRooms();
+        });
     }
 
     private void initializeComponents() {
@@ -299,7 +306,7 @@ public class RoomSelectionComponent {
 
     private void loadAndDisplayRooms() {
         clearThumbnails();
-        List<Room> rooms = RoomDataParser.parseRoomsFromJson();
+        List<Room> rooms = menuContext.roomList;
         createThumbnails(rooms);
         scheduleHeightAdjustment();
     }
@@ -316,7 +323,7 @@ public class RoomSelectionComponent {
                     context,
                     room.id,
                     thumbnailRadius / 2,
-                    room.imageUrl,
+                    room.img,
                     thumbnailContainer,
                     params);
             thumbnail.name = room.name;
@@ -452,41 +459,6 @@ public class RoomSelectionComponent {
     private static void logInfo(String message) {
         if (logger != null) {
             logger.info(message);
-        }
-    }
-
-    // Inner Classes and Helpers
-
-    private static class Room {
-        final String name;
-        final int id;
-        final String imageUrl;
-
-        Room(String name, int id, String imageUrl) {
-            this.name = name;
-            this.id = id;
-            this.imageUrl = imageUrl;
-        }
-    }
-
-    private static class RoomDataParser {
-        static List<Room> parseRoomsFromJson() {
-            List<Room> rooms = new ArrayList<>();
-            try {
-                JSONObject jsonObject = new JSONObject(GetJson.get());
-                JSONArray jsonRooms = jsonObject.getJSONArray("rooms");
-
-                for (int i = 0; i < jsonRooms.length(); i++) {
-                    JSONObject room = jsonRooms.getJSONObject(i);
-                    rooms.add(new Room(
-                            room.getString("name"),
-                            room.getInt("id"),
-                            room.getString("img")));
-                }
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-            return rooms;
         }
     }
 

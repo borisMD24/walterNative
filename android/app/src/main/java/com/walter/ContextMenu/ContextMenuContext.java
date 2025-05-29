@@ -13,6 +13,14 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import com.walter.UdpLogger;
+import com.walter.json.Room;
+import com.walter.json.Theme;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.InputStreamReader;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
 public class ContextMenuContext {
     public int nthOppened = -1;
@@ -21,6 +29,10 @@ public class ContextMenuContext {
     private List<Runnable> onBubbleResizeCallbacks = new ArrayList<>();
     private List<Runnable> onBubbleFixedCallbacks = new ArrayList<>();
     private List<Runnable> onBrightnessChangeCallbacks = new ArrayList<>();
+    private List<Runnable> onRoomsUpdateCallbacks = new ArrayList<>();
+    private List<Runnable> onThemesUpdateCallbacks = new ArrayList<>();
+    private List<Runnable> onCurrentRoomUpdateCallbacks = new ArrayList<>();
+    private List<Runnable> onCurrentThemeUpdateCallbacks = new ArrayList<>();
     protected int bubbleY = 0;
     protected float normalizedBubbleY = 0;
     protected int bubbleX = 0;
@@ -38,7 +50,10 @@ public class ContextMenuContext {
     private Context ctx;
     protected int currentRoomId = 0;
     private UdpLogger logger;
-
+    protected List<Room> roomList;
+    protected List<Theme> themeList;
+    private final String configFile = "contextMenuContext.json";
+    protected int currentThemeId = 0;
     ContextMenuContext(Context ctx) {
         this.ctx = ctx;
         setScreenHeight();
@@ -48,6 +63,22 @@ public class ContextMenuContext {
         ws.onMessage((msg) -> {
             this.handleMessage(msg);
         });
+        String data = ""; // ← initialisation sûre
+        try (FileInputStream fis = ctx.openFileInput(configFile);
+                InputStreamReader isr = new InputStreamReader(fis);
+                BufferedReader br = new BufferedReader(isr)) {
+
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            data = sb.toString();
+        } catch (IOException e) {
+            logInfo("Erreur lecture config : " + e.getMessage());
+        }
+        handleMessage(data, true);
+
     }
 
     private void initializeLogger() {
@@ -95,6 +126,33 @@ public class ContextMenuContext {
 
     public void onBrightnessChange(Runnable callback) {
         onBrightnessChangeCallbacks.add(callback);
+    }
+
+    public void onRoomsUpdate(Runnable callback) {
+        onRoomsUpdateCallbacks.add(callback);
+    }
+
+    public void onThemesUpdate(Runnable callback) {
+        onThemesUpdateCallbacks.add(callback);
+    }
+
+    public void onCurrentThemeUpdate(Runnable callback) {
+        onCurrentThemeUpdateCallbacks.add(callback);
+    }
+
+    private void setRooms(List<Room> rooms) {
+        roomList = rooms;
+        onRoomsUpdateCallbacks.forEach(Runnable::run);
+    }
+
+    private void setThemes(List<Theme> themes) {
+        themeList = themes;
+        onThemesUpdateCallbacks.forEach(Runnable::run);
+    }
+
+    public void setCurrentTheme(int id){
+        currentThemeId = id;
+        onCurrentThemeUpdateCallbacks.forEach(Runnable::run);
     }
 
     public void close(int nth) {
@@ -189,6 +247,9 @@ public class ContextMenuContext {
         this.themeSelectionY = y;
     }
 
+    public void onCurrentRoomUpdate(Runnable cb){
+        onCurrentRoomUpdateCallbacks.add(cb);
+    }
     public void postToServer(JSONObject data) {
         try {
             JSONObject json = new JSONObject();
@@ -203,17 +264,129 @@ public class ContextMenuContext {
 
     public void setRoomId(int id) {
         this.currentRoomId = id;
+        onCurrentRoomUpdateCallbacks.forEach(Runnable::run);
+    }
+
+    private void handleWelcome(JSONObject json) {
+        try {
+            // Check if this is a welcome message
+            if (json.has("welcome") && json.getBoolean("welcome")) {
+                System.out.println("Welcome message received!");
+
+                // Parse rooms
+                if (json.has("rooms")) {
+                    JSONArray roomsArray = json.getJSONArray("rooms");
+                    List<Room> rooms = parseRooms(roomsArray);
+
+                    for (Room room : rooms) {
+                        logInfo(room.toString());
+                    }
+
+                    setRooms(rooms);
+                }
+
+                // Parse themes
+                if (json.has("themes")) {
+                    JSONArray themesArray = json.getJSONArray("themes");
+                    List<Theme> themes = parseThemes(themesArray);
+
+                    for (Theme theme : themes) {
+                        logInfo(theme.toString());
+                    }
+
+                    setThemes(themes);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error parsing welcome message: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private List<Room> parseRooms(JSONArray roomsArray) {
+        List<Room> rooms = new ArrayList<>();
+
+        for (int i = 0; i < roomsArray.length(); i++) {
+            try {
+                JSONObject roomObj = roomsArray.getJSONObject(i);
+                String name = roomObj.getString("name");
+                int id = roomObj.getInt("id");
+                String img = roomObj.getString("img");
+
+                rooms.add(new Room(name, id, img));
+            } catch (Exception e) {
+                System.err.println("Error parsing room at index " + i + ": " + e.getMessage());
+            }
+        }
+
+        return rooms;
+    }
+
+    private List<Theme> parseThemes(JSONArray themesArray) {
+        List<Theme> themes = new ArrayList<>();
+
+        for (int i = 0; i < themesArray.length(); i++) {
+            try {
+                JSONObject themeObj = themesArray.getJSONObject(i);
+                String name = themeObj.getString("name");
+                int id = themeObj.getInt("id");
+                String img = themeObj.getString("img");
+                int roomID = themeObj.getInt("roomID");
+
+                themes.add(new Theme(name, id, img, roomID));
+
+            } catch (Exception e) {
+                System.err.println("Error parsing theme at index " + i + ": " + e.getMessage());
+            }
+        }
+
+        return themes;
     }
 
     private void handleMessage(String msg) {
+        handleMessage(msg, false);
+    }
 
-        this.logInfo(msg); // Log brut pour debug
+    private void handleMessage(String msg, boolean force) {
+        String data = "";
+        // Lecture sécurisée du fichier de config
+        try (FileInputStream fis = ctx.openFileInput(configFile);
+                InputStreamReader isr = new InputStreamReader(fis);
+                BufferedReader br = new BufferedReader(isr)) {
+
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                sb.append(line);
+            }
+            data = sb.toString();
+        } catch (IOException e) {
+            logInfo("Erreur lecture config : " + e.getMessage());
+            // On peut choisir de continuer ou non
+        }
+
+        // Comparaison par contenu
+        if (msg.equals(data) && !force) {
+            return;
+        }
 
         try {
             JSONObject jsonMsg = new JSONObject(msg);
-            JSONObject message = jsonMsg.getJSONObject("message");
+            if (jsonMsg.has("welcome")) {
+                // Écriture sécurisée
+                try (FileOutputStream fos = ctx.openFileOutput(configFile, Context.MODE_PRIVATE)) {
+                    fos.write(msg.getBytes(StandardCharsets.UTF_8));
+                } catch (IOException e) {
+                    logInfo("Erreur écriture config : " + e.getMessage());
+                }
+                logInfo("It's a welcome");
+                handleWelcome(jsonMsg);
+                return;
+            }
 
+            JSONObject message = jsonMsg.getJSONObject("message");
             JSONObject payload = message.getJSONObject("payload");
+
             if (message.has("roomID")) {
                 int roomId = message.getInt("roomID");
                 if (this.currentRoomId != roomId) {
@@ -222,15 +395,17 @@ public class ContextMenuContext {
             } else {
                 return;
             }
+
             if (payload.has("brightness")) {
                 int brightness = payload.getInt("brightness");
-                logInfo("brightness should be set to : " + brightness);
+                logInfo("Brightness should be set to: " + brightness);
                 isSettingBrightnessFromServer = true;
                 setBrightness(Math.abs((1 - normalizedBubbleX) - (brightness / 255f)));
                 isSettingBrightnessFromServer = false;
             }
         } catch (JSONException e) {
-            this.logInfo("Failed to parse message: " + e.getMessage());
+            logInfo("Failed to parse message: " + e.getMessage());
         }
     }
+
 }

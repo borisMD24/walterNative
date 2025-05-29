@@ -9,6 +9,7 @@ import android.os.Looper;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ScrollView;
+import android.widget.TextView;
 
 import com.google.android.flexbox.FlexDirection;
 import com.google.android.flexbox.FlexWrap;
@@ -21,6 +22,8 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import com.walter.json.Theme;
 
 /**
  * A component that displays a scrollable grid of theme thumbnails with smooth
@@ -46,6 +49,7 @@ public class ThemeSelectionComponent {
     private FrameLayout borderContainer;
     private ScrollView scrollView;
     private FlexboxLayout thumbnailContainer;
+    private TextView emptyStateTextView;
 
     // Managers - REMOVED final keyword to fix compilation error
     private ClipPathManager clipPathManager;
@@ -54,7 +58,7 @@ public class ThemeSelectionComponent {
     private StyleManager styleManager;
 
     // State
-    private final List<RoomThumbnail> thumbnails = new ArrayList<>();
+    private final List<ThemeThumbnail> thumbnails = new ArrayList<>();
     private boolean isDisplayed = false;
     private int maxHeight;
     private int maxWidth;
@@ -75,12 +79,32 @@ public class ThemeSelectionComponent {
         initializeManagers();
         setupLayout();
         initializeLogger();
+        
+        menuContext.onThemesUpdate(()->{
+            this.clearThumbnails();
+            this.loadAndDisplaythemes();
+        });
+        menuContext.onCurrentRoomUpdate(()->{
+            this.clearThumbnails();
+            this.loadAndDisplaythemes();
+        });
     }
 
     private void initializeComponents() {
         borderContainer = new FrameLayout(context);
         scrollView = new ScrollView(context);
         thumbnailContainer = new FlexboxLayout(context);
+                
+        thumbnailContainer.setClipChildren(false);
+        thumbnailContainer.setClipToPadding(false);
+        // Initialize empty state text view
+        emptyStateTextView = new TextView(context);
+        emptyStateTextView.setText("No themes available for this room");
+        emptyStateTextView.setTextColor(Color.GRAY);
+        emptyStateTextView.setTextSize(16);
+        emptyStateTextView.setGravity(android.view.Gravity.CENTER);
+        emptyStateTextView.setPadding(DEFAULT_SPACING, DEFAULT_SPACING * 2, DEFAULT_SPACING, DEFAULT_SPACING * 2);
+        emptyStateTextView.setVisibility(android.view.View.GONE); // Initially hidden
     }
 
     private void initializeManagers() {
@@ -303,43 +327,71 @@ public class ThemeSelectionComponent {
 
     private void loadAndDisplaythemes() {
         clearThumbnails();
-        List<Room> rooms = themeDataParser.parsethemesFromJson();
-        createThumbnails(rooms);
+        createThumbnails();
         scheduleHeightAdjustment();
     }
 
-    private void createThumbnails(List<Room> themes) {
+    private void createThumbnails() {
         int thumbnailSize = thumbnailRadius * 2;
         int spacing = DEFAULT_SPACING;
+        int themesFound = 0;
 
-        for (Room room : themes) {
-            FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(thumbnailSize, thumbnailSize);
-            params.setMargins(spacing / 2, spacing / 2, spacing / 2, spacing / 2);
+        for (Theme theme : menuContext.themeList) {
+            if(theme.roomID == menuContext.currentRoomId){                
+                FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(thumbnailSize, thumbnailSize);
+                params.setMargins(spacing / 2, spacing / 2, spacing / 2, spacing / 2);
 
-            RoomThumbnail thumbnail = new RoomThumbnail(
-                    context,
-                    room.id,
-                    thumbnailRadius / 2,
-                    room.imageUrl,
-                    thumbnailContainer,
-                    params);
-            thumbnail.name = room.name;
-            thumbnail.updateNameLabel();
-            thumbnail.setDragCallback(scrollManager::onScroll);
-            thumbnail.setClickCallback(this::handleThumbnailClick);
+                ThemeThumbnail thumbnail = new ThemeThumbnail(
+                        context,
+                        theme.id,
+                        thumbnailRadius / 2,
+                        theme.img,
+                        thumbnailContainer,
+                        params, 
+                        menuContext);
+                thumbnail.name = theme.name;
+                thumbnail.updateNameLabel();
+                thumbnail.setDragCallback(scrollManager::onScroll);
+                thumbnail.setClickCallback(this::handleThumbnailClick);
 
-            thumbnails.add(thumbnail);
+                thumbnails.add(thumbnail);
+                themesFound++;
+            }
+        }
+
+        // Show empty state if no themes found
+        if (themesFound == 0) {
+            showEmptyState();
+        } else {
+            hideEmptyState();
         }
 
         scheduleScrollBoundsUpdate();
     }
 
+    // Add these new methods to handle empty state
+    private void showEmptyState() {
+        if (emptyStateTextView.getParent() == null) {
+            // Add empty state text to thumbnail container
+            FlexboxLayout.LayoutParams params = new FlexboxLayout.LayoutParams(
+                    FlexboxLayout.LayoutParams.MATCH_PARENT,
+                    FlexboxLayout.LayoutParams.WRAP_CONTENT);
+            params.setMargins(DEFAULT_SPACING, DEFAULT_SPACING * 2, DEFAULT_SPACING, DEFAULT_SPACING * 2);
+            thumbnailContainer.addView(emptyStateTextView, params);
+        }
+        emptyStateTextView.setVisibility(android.view.View.VISIBLE);
+    }
+
+    private void hideEmptyState() {
+        emptyStateTextView.setVisibility(android.view.View.GONE);
+    }
+
     private void clearThumbnails() {
-        for (RoomThumbnail thumbnail : thumbnails) {
+        for (ThemeThumbnail thumbnail : thumbnails) {
             thumbnail.destroy();
         }
         thumbnails.clear();
-        thumbnailContainer.removeAllViews();
+        thumbnailContainer.removeAllViews(); // This will also remove the empty state text
         scrollManager.resetScroll();
     }
 
@@ -363,6 +415,7 @@ public class ThemeSelectionComponent {
             int scrollViewHeight = newBorderHeight - borderPadding;
             FrameLayout.LayoutParams scrollParams = (FrameLayout.LayoutParams) scrollView.getLayoutParams();
             if (scrollParams != null) {
+                scrollParams.height = scrollViewHeight;
                 scrollParams.height = scrollViewHeight;
                 scrollView.setLayoutParams(scrollParams);
             }
@@ -445,6 +498,8 @@ public class ThemeSelectionComponent {
 
     private void handleThumbnailClick(int id) {
         logInfo("Thumbnail clicked: " + id);
+        menuContext.setCurrentTheme(id);
+        logInfo("set active" + menuContext.currentThemeId);
     }
 
     private void onScrollPositionChanged() {
@@ -469,41 +524,6 @@ public class ThemeSelectionComponent {
     private static void logInfo(String message) {
         if (logger != null) {
             logger.info(message);
-        }
-    }
-
-    // Inner Classes and Helpers
-
-    private static class Room {
-        final String name;
-        final int id;
-        final String imageUrl;
-
-        Room(String name, int id, String imageUrl) {
-            this.name = name;
-            this.id = id;
-            this.imageUrl = imageUrl;
-        }
-    }
-
-    private static class themeDataParser {
-        static List<Room> parsethemesFromJson() {
-            List<Room> themes = new ArrayList<>();
-            try {
-                JSONObject jsonObject = new JSONObject(GetJson.get());
-                JSONArray jsonthemes = jsonObject.getJSONArray("rooms");
-
-                for (int i = 0; i < jsonthemes.length(); i++) {
-                    JSONObject theme = jsonthemes.getJSONObject(i);
-                    themes.add(new Room(
-                            theme.getString("name"),
-                            theme.getInt("id"),
-                            theme.getString("img")));
-                }
-            } catch (JSONException e) {
-                e.printStackTrace();
-            }
-            return themes;
         }
     }
 
