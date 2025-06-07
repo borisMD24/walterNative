@@ -97,9 +97,6 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
 
             // Pass configuration options to the service
             if (config != null) {
-                if (config.hasKey("bubbleIcon")) {
-                    intent.putExtra("bubbleIcon", config.getString("bubbleIcon"));
-                }
 
                 if (config.hasKey("bubbleSize")) {
                     intent.putExtra("bubbleSize", config.getInt("bubbleSize"));
@@ -315,17 +312,7 @@ public class FloatingBubbleModule extends ReactContextBaseJavaModule {
                 // Get parameters from intent with defaults
                 int bubbleSize = (intent != null) ? intent.getIntExtra("bubbleSize", (int)convertDpToPixel(DEFAULT_BUBBLE_SIZE_DP, bubbleView.getContext()))
                         : (int)convertDpToPixel(DEFAULT_BUBBLE_SIZE_DP, bubbleView.getContext());
-                ImageView bubbleImage = bubbleView.findViewById(R.id.bubble_image);
-
-                // Set bubble image if provided
-                if (intent != null && intent.hasExtra("bubbleIcon")) {
-                    String iconName = intent.getStringExtra("bubbleIcon");
-                    int resourceId = getResources().getIdentifier(
-                            iconName, "drawable", getPackageName());
-                    if (resourceId != 0) {
-                        bubbleImage.setImageResource(resourceId);
-                    }
-                }
+                ImageView bubbleImage = bubbleView.findViewById(R.drawable.walt);
 
                 // Configure the layout parameters for the overlay window
                 params = createBubbleLayoutParams(bubbleSize);

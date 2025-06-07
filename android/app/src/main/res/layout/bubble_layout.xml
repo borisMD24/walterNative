@@ -7,16 +7,6 @@
         android:id="@+id/bubble_image"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:src="@drawable/bubble"
+        android:src="@drawable/walt"
         android:contentDescription="Floating Bubble" />
-
-    <!-- Rond rouge type pastille -->
-    <View
-        android:id="@+id/red_dot"
-        android:layout_width="12dp"
-        android:layout_height="12dp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="4dp"
-        android:layout_marginEnd="4dp"
-        android:background="@drawable/red_circle" />
 </FrameLayout>
