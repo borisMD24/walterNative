@@ -28,7 +28,7 @@ public class WsContextMenuBind extends WebSocketListener {
     public void initWebSocket() {
         client = new OkHttpClient();
         Request request = new Request.Builder()
-                .url("ws://192.168.1.18:3000/")
+                .url("ws://192.168.1.88:3000/")
                 .build();
 
         webSocket = client.newWebSocket(request, this);
