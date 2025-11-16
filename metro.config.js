@@ -6,6 +6,13 @@ const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
  *
  * @type {import('@react-native/metro-config').MetroConfig}
  */
-const config = {};
+const config = getDefaultConfig(__dirname);
 
-module.exports = mergeConfig(getDefaultConfig(__dirname), config);
+config.resolver.alias = {
+  ...config.resolver.alias,
+  'react-native-svg': 'react-native-svg/lib/module/index.js',
+};
+
+config.resolver.assetExts.push('obj', 'mtl', 'fbx', 'gltf', 'glb');
+
+module.exports = config;

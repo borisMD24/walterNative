@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
 import { Canvas, 
     Fill, 
     RoundedRect, 
@@ -10,13 +10,14 @@ import { Canvas,
     Circle,
     Path
 } from '@shopify/react-native-skia';
-
+import { StyleSheet, View, RNTextInput } from 'react-native';
 import { themes } from "../themes/neumorphic.js";
-
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS, useSharedValue, Easing, withTiming, useDerivedValue, interpolate } from 'react-native-reanimated';
 // Le require est crucial ici
 const fontPath = require("../../assets/Montserrat-VariableFont_wght.ttf");
 
-const Button = ({ title, theme = 'light', pressed = false }) => {
+const Button = ({ title, theme = 'light', onPress, disabled = false, transitionDuration = 150 }) => {
   const colors = themes[theme];
   const bg = colors.background;
   const shadowLight = colors.shadowLight;
@@ -24,154 +25,341 @@ const Button = ({ title, theme = 'light', pressed = false }) => {
   const textColor = colors.text;
 
   const font = useFont(fontPath, 16);
-  if (!font) return null;
+  const pressedProgress = useSharedValue(0);
+  const gestureActive = useSharedValue(false);
 
-  // Shadow space calculation using 3-sigma rule
-  // Blur of 10 extends approximately 30px in each direction
   const maxBlur = 10;
-  const shadowPadding = Math.ceil(maxBlur * 3); // 30px padding
+  const shadowPadding = Math.ceil(maxBlur * 3);
   const canvasWidth = 120 + (2 * shadowPadding);
   const canvasHeight = 40 + (2 * shadowPadding);
-  
-  // Button positioning - when pressed, we simulate depth by moving slightly
-  const buttonX = shadowPadding + (pressed ? 2 : 0); // Slight movement when pressed
-  const buttonY = shadowPadding + (pressed ? 2 : 0);
+  const baseButtonX = shadowPadding;
+  const baseButtonY = shadowPadding;
   const buttonWidth = 120;
   const buttonHeight = 40;
+const paragraphStyle = useMemo(() => {
+  return {
+    textAlign: 'center',
+    fontSize: 16,
+    fontFamilies: [fontPath],
+  };
+}, []);
+  const animateToPressed = (isPressed) => {
+    'worklet';
+    if (gestureActive.value === isPressed) return; // Prevent redundant animations
+    
+    gestureActive.value = isPressed;
+    pressedProgress.value = withTiming(isPressed ? 1 : 0, {
+      duration: transitionDuration,
+      easing: Easing.out(Easing.cubic),
+    });
+  };
+
+  const animatedProps = useDerivedValue(() => {
+    const progress = pressedProgress.value;
+
+    return {
+      x: baseButtonX,
+      y: baseButtonY,
+      shadowDarkDx: interpolate(progress, [0, 1], [5, -3]),
+      shadowDarkDy: interpolate(progress, [0, 1], [5, -3]),
+      shadowDarkBlur: interpolate(progress, [0, 1], [10, 6]),
+      shadowLightDx: interpolate(progress, [0, 1], [-5, 3]),
+      shadowLightDy: interpolate(progress, [0, 1], [-5, 3]),
+      shadowLightBlur: interpolate(progress, [0, 1], [10, 6]),
+      shadowOpacity: interpolate(progress, [0, 1], [1, 0.6]),
+      textX: baseButtonX + (buttonWidth / 2),
+      textY: baseButtonY + (buttonHeight / 2) + 6,
+    };
+  });
+
+  const shadowDarkWithAlpha = useDerivedValue(() => {
+    const alpha = Math.round(animatedProps.value.shadowOpacity * 255);
+    return `${shadowDark}${alpha.toString(16).padStart(2, '0')}`;
+  });
+
+  const shadowLightWithAlpha = useDerivedValue(() => {
+    const alpha = Math.round(animatedProps.value.shadowOpacity * 255);
+    return `${shadowLight}${alpha.toString(16).padStart(2, '0')}`;
+  });
+
+  // Android-specific: Use single tap gesture to avoid race conditions
+  const tapGesture = Gesture.Tap()
+    .enabled(!disabled)
+    .onTouchesDown(() => {
+      'worklet';
+      animateToPressed(true);
+    })
+    .onTouchesUp(() => {
+      'worklet';
+      animateToPressed(false);
+    })
+    .onEnd(() => {
+      'worklet';
+      animateToPressed(false);
+      if (onPress) {
+        runOnJS(onPress)();
+      }
+    })
+    .onTouchesCancelled(() => {
+      'worklet';
+      animateToPressed(false);
+    });
+
+  // Simplified pan gesture for Android
+  const panGesture = Gesture.Pan()
+    .enabled(!disabled)
+    .onStart(() => {
+      'worklet';
+      animateToPressed(true);
+    })
+    .onUpdate((event) => {
+      'worklet';
+      const isWithinBounds =
+        event.x >= 0 &&
+        event.x <= canvasWidth &&
+        event.y >= 0 &&
+        event.y <= canvasHeight;
+
+      // Only animate if state actually changes
+      if (gestureActive.value !== isWithinBounds) {
+        animateToPressed(isWithinBounds);
+      }
+    })
+    .onEnd((event) => {
+      'worklet';
+      const isWithinBounds =
+        event.x >= 0 &&
+        event.x <= canvasWidth &&
+        event.y >= 0 &&
+        event.y <= canvasHeight;
+
+      animateToPressed(false);
+      
+      if (isWithinBounds && onPress) {
+        runOnJS(onPress)();
+      }
+    })
+    .onFinalize(() => {
+      'worklet';
+      animateToPressed(false);
+    });
+
+  const combinedGesture = Gesture.Race(tapGesture, panGesture);
+
+  if (!font) return null;
 
   return (
-    <Canvas style={{ width: canvasWidth, height: canvasHeight }}>
-      {/* Background fill to match the surface the button sits on */}
-      <Fill color={bg} />
-      
-      {pressed ? (
-        // Pressed state: create inset appearance with inverted shadows and reduced intensity
-        <RoundedRect 
-          x={buttonX} 
-          y={buttonY} 
-          width={buttonWidth} 
-          height={buttonHeight} 
-          r={20} 
+    <GestureDetector gesture={combinedGesture}>
+      <Canvas style={{
+        width: canvasWidth,
+        height: canvasHeight,
+        opacity: disabled ? 0.5 : 1
+      }}>
+
+        <RoundedRect
+          x={animatedProps.value.x}
+          y={animatedProps.value.y}
+          width={buttonWidth}
+          height={buttonHeight}
+          r={20}
           color={bg}
         >
-          {/* When pressed, the button appears sunken - light comes from opposite direction */}
-          <Shadow dx={-3} dy={-3} blur={6} color={shadowDark} />
-          <Shadow dx={3} dy={3} blur={6} color={shadowLight} />
+          <Shadow
+            dx={animatedProps.value.shadowDarkDx}
+            dy={animatedProps.value.shadowDarkDy}
+            blur={animatedProps.value.shadowDarkBlur}
+            color={shadowDarkWithAlpha}
+          />
+          <Shadow
+            dx={animatedProps.value.shadowLightDx}
+            dy={animatedProps.value.shadowLightDy}
+            blur={animatedProps.value.shadowLightBlur}
+            color={shadowLightWithAlpha}
+          />
         </RoundedRect>
-      ) : (
-        // Normal state: raised appearance with standard neumorphic shadows
-        <RoundedRect 
-          x={buttonX} 
-          y={buttonY} 
-          width={buttonWidth} 
-          height={buttonHeight} 
-          r={20} 
-          color={bg}
-        >
-          {/* Standard neumorphic shadows - light from top-left */}
-          <Shadow dx={5} dy={5} blur={10} color={shadowDark} />
-          <Shadow dx={-5} dy={-5} blur={10} color={shadowLight} />
-        </RoundedRect>
-      )}
-      
-      {/* Text positioning: calculate the exact center without conflicting alignment */}
-      <Text
-        x={buttonX + (buttonWidth / 2)} // Exact horizontal center
-        y={buttonY + (buttonHeight / 2) + 6} // Vertical center with slight adjustment for font baseline
-        text={title}
-        font={font}
-        color={textColor}
-        textAlign="center" // This centers the text horizontally around the x coordinate
-      />
-    </Canvas>
+
+        <Text
+  x={0}
+  y={0}
+  text={title}
+  font={font}
+  color={textColor}
+  transform={[
+    { translateX: animatedProps.value.textX/2 },
+    { translateY: animatedProps.value.textY }
+  ]}
+  origin={{ x: 0, y: 0 }}
+/>
+      </Canvas>
+    </GestureDetector>
   );
 };
 
-
-const RadialSlider = ({ value = 0, size = 200, theme = 'light' }) => {
+const RadialSlider = ({ value: initialValue = 0, size = 200, theme = 'light', onValueChange }) => {
+  const [value, setValue] = useState(initialValue);
   const colors = themes[theme];
   const bg = colors.background;
   const shadowLight = colors.shadowLight;
   const shadowDark = colors.shadowDark;
-  
-  // Calculate required padding based on largest shadow offset + blur + element radius
-  // Main circle: radius + 15, shadow offset 8, blur 15 = need 38 padding
-  // Cursor: radius 12, shadow offset 4, blur 8 = need 24 padding
-  const shadowPadding = 40; // Increased to ensure no clipping
+
+  const shadowPadding = 40;
   const canvasSize = size + shadowPadding * 2;
   const centerOffset = shadowPadding;
-  
-  // Rayon extérieur du cercle
+
   const radius = size / 2 - 10;
-  
-  // Arc de 300 degrés : commence à -150° et finit à +150° (300° total)
-  const startAngle = -150 * Math.PI / 180; // -150° en radians
-  const endAngle = 150 * Math.PI / 180;    // +150° en radians
-  const arcRange = endAngle - startAngle;  // 300° en radians
-  
-  // Calcul de la position du curseur sur l'arc (basé sur la valeur 0-100)
-  const angle = startAngle + (value / 100) * arcRange;
-  
-  // Position du curseur
+  const startAngle = -150 * Math.PI / 180;
+  const endAngle = 150 * Math.PI / 180;
+  const arcRange = endAngle - startAngle;
+
   const centerX = size / 2 + centerOffset;
   const centerY = size / 2 + centerOffset;
-  const cx = centerX + (radius/8*7) * Math.cos(angle);
-  const cy = centerY + (radius/8*7) * Math.sin(angle);
 
-  // Création du chemin d'arc de 300°
+  // Use shared value for internal slider state
+  const sliderValue = useSharedValue(initialValue);
+  // Track the last valid value to prevent jumps
+  const lastValidValue = useSharedValue(initialValue);
+
+  const angle = useDerivedValue(() => {
+    return startAngle + (sliderValue.value / 100) * arcRange;
+  });
+
+  const cx = useDerivedValue(() => {
+    return centerX + (radius / 8 * 7) * Math.cos(angle.value);
+  });
+
+  const cy = useDerivedValue(() => {
+    return centerY + (radius / 8 * 7) * Math.sin(angle.value);
+  });
+
   const arcPath = Skia.Path.Make();
   arcPath.addArc(
     { x: centerX - radius, y: centerY - radius, width: radius * 2, height: radius * 2 },
-    startAngle * 180 / Math.PI, // Skia utilise les degrés
-    300 // 300 degrés d'arc
+    startAngle * 180 / Math.PI,
+    300
   );
 
-  // Arc de progression (de 0 à la valeur actuelle)
-  const progressPath = Skia.Path.Make();
-  const progressAngle = (value / 100) * 300; // Progression en degrés
-  progressPath.addArc(
-    { x: centerX - (radius/8*7), y: centerY - (radius/8*7), width: (radius/8*7) * 2, height: (radius/8*7) * 2 },
-    -150, // Commence à -150°
-    progressAngle // Jusqu'à la valeur actuelle
-  );
+  const progressPath = useDerivedValue(() => {
+    const progressAngle = (sliderValue.value / 100) * 300;
+    const path = Skia.Path.Make();
+    path.addArc(
+      { x: centerX - (radius / 8 * 7), y: centerY - (radius / 8 * 7), width: (radius / 8 * 7) * 2, height: (radius / 8 * 7) * 2 },
+      -150,
+      progressAngle
+    );
+    return path;
+  });
+
+  const calculateAngle = (x, y) => {
+    'worklet';
+    const dx = x - centerX;
+    const dy = y - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const normalizedX = dx / distance;
+    const normalizedY = dy / distance;
+    let calculatedAngle = Math.atan2(normalizedY, normalizedX);
+    
+    // Handle angle wrapping for anti-jump protection
+    if (calculatedAngle < startAngle) {
+      calculatedAngle = startAngle;
+    } else if (calculatedAngle > endAngle) {
+      calculatedAngle = endAngle;
+    }
+    
+    return calculatedAngle;
+  };
+
+  const calculateValue = (angle) => {
+    'worklet';
+    const normalizedAngle = (angle - startAngle) / arcRange;
+    return Math.min(Math.max(normalizedAngle * 100, 0), 100);
+  };
+
+  const isValidValueTransition = (currentValue, newValue) => {
+    'worklet';
+    const JUMP_THRESHOLD = 50; // Prevent jumps larger than 50%
+    const valueDiff = Math.abs(newValue - currentValue);
+    
+    // Allow transition if difference is reasonable
+    if (valueDiff <= JUMP_THRESHOLD) {
+      return true;
+    }
+    
+    // Check if we're at the boundaries and the jump is expected
+    const isAtMinBoundary = currentValue <= 5 && newValue >= 95;
+    const isAtMaxBoundary = currentValue >= 95 && newValue <= 5;
+    
+    // Reject jumps at boundaries (anti-jump protection)
+    return !isAtMinBoundary && !isAtMaxBoundary;
+  };
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      const angle = calculateAngle(event.x, event.y);
+      const newValue = calculateValue(angle);
+      
+      // Apply anti-jump protection
+      if (isValidValueTransition(lastValidValue.value, newValue)) {
+        sliderValue.value = newValue;
+        lastValidValue.value = newValue;
+      }
+      // If invalid transition, keep current value (no update)
+    })
+    .onEnd(() => {
+      // Use runOnJS to bridge back to JS thread for React state updates
+      runOnJS(setValue)(sliderValue.value);
+      if (onValueChange) {
+        runOnJS(onValueChange)(sliderValue.value);
+      }
+    });
+
+  // Sync external value changes to internal shared value
+  useEffect(() => {
+    sliderValue.value = initialValue;
+    lastValidValue.value = initialValue;
+  }, [initialValue]);
 
   return (
-    <Canvas style={{ width: canvasSize, height: canvasSize }}>
-      {/* Fond avec effet neumorphique */}
-      <Circle cx={centerX} cy={centerY} r={radius + 15} color={bg}>
-        <Shadow dx={8} dy={8} blur={15} color={shadowDark} />
-        <Shadow dx={-8} dy={-8} blur={15} color={shadowLight} />
-      </Circle>
+    <GestureDetector gesture={panGesture}>
+      <Canvas style={{ width: canvasSize, height: canvasSize }}>
+        <Circle cx={centerX} cy={centerY} r={radius + 15} color={bg}>
+          <Shadow dx={8} dy={8} blur={15} color={shadowDark} />
+          <Shadow dx={-8} dy={-8} blur={15} color={shadowLight} />
+        </Circle>
 
-      {/* Arc de fond (300°) */}
-      <Path
-        path={arcPath}
-        style="stroke"
-        strokeWidth={8}
-        color={'#E0E0E0'}
-        strokeCap="round"
-      />
+        <Path
+          path={arcPath}
+          style="stroke"
+          strokeWidth={8}
+          color={'#E0E0E0'}
+          strokeCap="round"
+        />
 
-      {/* Arc de progression */}
-      <Path
-        path={progressPath}
-        style="stroke"
-        strokeWidth={8}
-        color={colors.shadowDark}
-        strokeCap="round"
-      />
+        <Path
+          path={progressPath}
+          style="stroke"
+          strokeWidth={8}
+          color={colors.shadowDark}
+          strokeCap="round"
+        />
 
-      {/* Curseur : un petit cercle positionné sur l'arc */}
-      <Circle cx={cx} cy={cy} r={12} color={colors.background}>
-        <Shadow dx={4} dy={4} blur={8} color={shadowLight} />
-        <Shadow dx={-2} dy={-2} blur={6} color={shadowDark} />
-      </Circle>
-    </Canvas>
+        <Circle cx={cx} cy={cy} r={12} color={colors.background}>
+          <Shadow dx={4} dy={4} blur={8} color={shadowLight} />
+          <Shadow dx={-2} dy={-2} blur={6} color={shadowDark} />
+        </Circle>
+      </Canvas>
+    </GestureDetector>
   );
 };
 
 
-const LinearSlider = ({ value = 50, width = 300, height = 60, theme = 'light' }) => {
+const LinearSlider = ({ 
+  value: initialValue = 50, 
+  width = 300, 
+  height = 60, 
+  theme = 'light',
+  onValueChange 
+}) => {
+  const [value, setValue] = useState(initialValue);
   const colors = themes[theme];
   const bg = colors.background;
   const shadowLight = colors.shadowLight;
@@ -184,15 +372,15 @@ const LinearSlider = ({ value = 50, width = 300, height = 60, theme = 'light' })
   const thumbShadow = { offset: 3, blur: 5 };
   
   // Calculate shadow extents (using 3x blur for proper coverage)
-  const bgShadowExtent = Math.abs(bgShadow.offset) + (bgShadow.blur * 3); // 4 + 24 = 28
-  const thumbShadowExtent = Math.abs(thumbShadow.offset) + (thumbShadow.blur * 3); // 3 + 15 = 18
+  const bgShadowExtent = Math.abs(bgShadow.offset) + (bgShadow.blur * 3);
+  const thumbShadowExtent = Math.abs(thumbShadow.offset) + (thumbShadow.blur * 3);
   
   // Layout calculations
   const thumbCenterY = height / 2;
   const thumbTrackPadding = 10;
   
   // Horizontal padding: account for thumb movement range + shadows
-  const thumbTravelDistance = thumbTrackPadding + thumbRadius; // Max distance from background edge
+  const thumbTravelDistance = thumbTrackPadding + thumbRadius;
   const paddingHorizontal = Math.max(bgShadowExtent, thumbTravelDistance + thumbShadowExtent);
   
   // Vertical padding: account for thumb overhang + shadows
@@ -213,75 +401,253 @@ const LinearSlider = ({ value = 50, width = 300, height = 60, theme = 'light' })
   const trackY = backgroundY + (height - trackHeight) / 2;
   const trackWidth = width - (thumbTrackPadding * 2);
   
-  const thumbX = trackX + (trackWidth * (value / 100));
+  // Gesture-related shared values
+  const sliderValue = useSharedValue(initialValue);
+  const lastValidValue = useSharedValue(initialValue);
+
+  // Separate shared value for immediate thumb position updates
+  const thumbPosition = useSharedValue(trackX + (trackWidth * (initialValue / 100)));
+
+  const thumbX = useDerivedValue(() => {
+    return thumbPosition.value;
+  });
+
+  const progressWidth = useDerivedValue(() => {
+    return (thumbPosition.value - trackX);
+  });
+
   const thumbY = backgroundY + thumbCenterY;
 
+  const calculateValue = (x) => {
+    'worklet';
+    // Clamp x to track bounds
+    const clampedX = Math.max(trackX, Math.min(x, trackX + trackWidth));
+    
+    // Calculate normalized position (0-1)
+    const normalizedPosition = (clampedX - trackX) / trackWidth;
+    
+    // Convert to percentage (0-100)
+    return Math.min(Math.max(normalizedPosition * 100, 0), 100);
+  };
+
+  const calculateThumbPosition = (value) => {
+    'worklet';
+    return trackX + (trackWidth * (value / 100));
+  };
+
+  const isValidValueTransition = (currentValue, newValue) => {
+    'worklet';
+    const JUMP_THRESHOLD = 50; // Prevent jumps larger than 50%
+    const valueDiff = Math.abs(newValue - currentValue);
+    
+    // Allow transition if difference is reasonable
+    if (valueDiff <= JUMP_THRESHOLD) {
+      return true;
+    }
+    
+    // For linear slider, boundary jumps are less likely but still protect
+    const isAtMinBoundary = currentValue <= 5 && newValue >= 95;
+    const isAtMaxBoundary = currentValue >= 95 && newValue <= 5;
+    
+    return !isAtMinBoundary && !isAtMaxBoundary;
+  };
+
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      const newValue = calculateValue(event.x);
+      
+      // Apply anti-jump protection
+      if (isValidValueTransition(lastValidValue.value, newValue)) {
+        sliderValue.value = newValue;
+        lastValidValue.value = newValue;
+        // Update thumb position immediately for visual feedback
+        thumbPosition.value = calculateThumbPosition(newValue);
+      }
+    })
+    .onEnd(() => {
+      // Bridge back to JS thread for React state updates
+      runOnJS(setValue)(sliderValue.value);
+      if (onValueChange) {
+        runOnJS(onValueChange)(sliderValue.value);
+      }
+    });
+
+  // Sync external value changes to internal shared values
+  useEffect(() => {
+    sliderValue.value = initialValue;
+    lastValidValue.value = initialValue;
+    thumbPosition.value = calculateThumbPosition(initialValue);
+  }, [initialValue]);
+
   return (
-    <Canvas style={{ width: canvasWidth, height: canvasHeight }}>
-      {/* Background with neumorphic shadows */}
-      <RoundedRect 
-        x={backgroundX} 
-        y={backgroundY} 
-        width={width} 
-        height={height} 
-        r={height / 2} 
-        color={bg}
-      >
-        <Shadow dx={bgShadow.offset} dy={bgShadow.offset} blur={bgShadow.blur} color={shadowDark} />
-        <Shadow dx={-bgShadow.offset} dy={-bgShadow.offset} blur={bgShadow.blur} color={shadowLight} />
-      </RoundedRect>
+    <GestureDetector gesture={panGesture}>
+      <Canvas style={{ width: canvasWidth, height: canvasHeight }}>
+        {/* Background with neumorphic shadows */}
+        <RoundedRect 
+          x={backgroundX} 
+          y={backgroundY} 
+          width={width} 
+          height={height} 
+          r={height / 2} 
+          color={bg}
+        >
+          <Shadow dx={bgShadow.offset} dy={bgShadow.offset} blur={bgShadow.blur} color={shadowDark} />
+          <Shadow dx={-bgShadow.offset} dy={-bgShadow.offset} blur={bgShadow.blur} color={shadowLight} />
+        </RoundedRect>
 
-      {/* Track */}
-      <RoundedRect
-        x={trackX} 
-        y={trackY}
-        width={trackWidth} 
-        height={trackHeight}
-        r={trackHeight / 2} 
-        color={'#CCCCCC'}
-      />
+        {/* Track */}
+        <RoundedRect
+          x={trackX} 
+          y={trackY}
+          width={trackWidth} 
+          height={trackHeight}
+          r={trackHeight / 2} 
+          color={'#CCCCCC'}
+        />
 
-      {/* Thumb with neumorphic shadows */}
-      <Circle 
-        cx={thumbX} 
-        cy={thumbY} 
-        r={thumbRadius} 
-        color={bg}
-      >
-        <Shadow dx={thumbShadow.offset} dy={thumbShadow.offset} blur={thumbShadow.blur} color={shadowDark} />
-        <Shadow dx={-thumbShadow.offset} dy={-thumbShadow.offset} blur={thumbShadow.blur} color={shadowLight} />
-      </Circle>
-    </Canvas>
+        {/* Progress track */}
+        <RoundedRect
+          x={trackX} 
+          y={trackY}
+          width={progressWidth} 
+          height={trackHeight}
+          r={trackHeight / 2} 
+          color={shadowDark}
+          opacity={0.7}
+        />
+
+        {/* Thumb with neumorphic shadows */}
+        <Circle 
+          cx={thumbX} 
+          cy={thumbY} 
+          r={thumbRadius} 
+          color={bg}
+        >
+          <Shadow dx={thumbShadow.offset} dy={thumbShadow.offset} blur={thumbShadow.blur} color={shadowDark} />
+          <Shadow dx={-thumbShadow.offset} dy={-thumbShadow.offset} blur={thumbShadow.blur} color={shadowLight} />
+        </Circle>
+      </Canvas>
+    </GestureDetector>
   );
 };
 
 
-const TextInput = ({ placeholder = 'Entrez du texte', width = 300, height = 50, theme = 'light' }) => {
-  const font = useFont(fontPath, 16);
-  const colors = themes[theme];
+const TextInput = ({ 
+  placeholder = 'Entrez du texte', 
+  value: externalValue = '',
+  width = 300, 
+  height = 50, 
+  theme = 'light',
+  onChangeText,
+  onFocus,
+  onBlur,
+  ...props
+}) => {
+  const font = useFont(fontPath, 16); // Make sure fontPath is imported/defined
+  const colors = themes[theme]; // Make sure themes is imported/defined
   const bg = colors.background;
   const shadowLight = colors.shadowLight;
   const shadowDark = colors.shadowDark;
+  const textColor = colors.text;
   const radius = 15;
+  
+  const [value, setValue] = useState(externalValue);
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setValue(externalValue);
+  }, [externalValue]);
+
+  const handleChangeText = (text) => {
+    setValue(text);
+    if (onChangeText) {
+      onChangeText(text);
+    }
+  };
+
+  const handleFocus = (e) => {
+    setIsFocused(true);
+    if (onFocus) {
+      onFocus(e);
+    }
+  };
+
+  const handleBlur = (e) => {
+    setIsFocused(false);
+    if (onBlur) {
+      onBlur(e);
+    }
+  };
+
+  const handlePress = () => {
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
 
   return (
-    <Canvas style={{ width, height }}>
-      {/* Fond + champ */}
-      <RoundedRect x={0} y={0} width={width} height={height} r={radius} color={bg}>
-        {/* Ombre interne pour effet enfoncé */}
-        <Shadow dx={4} dy={4} blur={6} color={shadowDark} inner />
-        <Shadow dx={-4} dy={-4} blur={6} color={shadowLight} inner />
-      </RoundedRect>
-      {/* Texte simulé */}
-      <Text
-        x={20} y={height/2 + 5}
-        text={placeholder}
-        font={font}
-        color={colors.text}
+    <View style={[styles.container, { width, height }]}>
+      {/* Skia Canvas for neumorphic styling */}
+      <Canvas style={[StyleSheet.absoluteFillObject]} onTouchStart={handlePress}>
+        <RoundedRect x={0} y={0} width={width} height={height} r={radius} color={bg}>
+          <Shadow dx={4} dy={4} blur={6} color={shadowDark} inner />
+          <Shadow dx={-4} dy={-4} blur={6} color={shadowLight} inner />
+        </RoundedRect>
+        
+        {/* Show placeholder only when no value */}
+        {!value && font && (
+          <Text
+            x={20} 
+            y={height/2 + 5}
+            text={placeholder}
+            font={font}
+            color={textColor}
+            opacity={0.5}
+          />
+        )}
+      </Canvas>
+
+      {/* Functional TextInput */}
+      <RNTextInput
+        ref={inputRef}
+        style={[
+          styles.textInput,
+          {
+            width: width - 40,
+            height: height - 20,
+            color: textColor,
+          }
+        ]}
+        value={value}
+        onChangeText={handleChangeText}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+        placeholder=""
+        placeholderTextColor="transparent"
+        {...props}
       />
-    </Canvas>
+    </View>
   );
 };
+
+const styles = StyleSheet.create({
+  container: {
+    position: 'relative',
+  },
+  textInput: {
+    position: 'absolute',
+    top: 10,
+    left: 20,
+    backgroundColor: 'transparent',
+    borderWidth: 0,
+    fontSize: 16,
+    padding: 0,
+    margin: 0,
+  },
+});
+
+export default TextInput;
 
 
 const NeumorphicCard = ({ title = 'Titre', content = 'Contenu de la carte...', width = 280, height = 180, theme = 'light' }) => {
